@@ -1,0 +1,17 @@
+<Project Sdk="Godot.NET.Sdk/4.6.3">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>GodotWebViewSharp</RootNamespace>
+  </PropertyGroup>
+
+  <!-- WebView2: Windows 系统浏览器 (对标 godot_wry 的 WRY) -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3065.39" />
+  </ItemGroup>
+
+  <!-- macOS: 将使用 WebKit (WKWebView) 原生框架 -->
+  <!-- Linux: 将使用 WebKitGTK -->
+</Project>

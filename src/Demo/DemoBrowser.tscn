@@ -1,0 +1,86 @@
+[gd_scene format=3 uid="uid://btfpp1ujpxh5b"]
+
+[ext_resource type="Script" uid="uid://tylwvlscmhkx" path="res://addons/WebViewSharp/WebViewControl.cs" id="1_aod8w"]
+
+[sub_resource type="GDScript" id="GDScript_demo"]
+script/source = "extends Control
+
+# GodotWebViewSharp 演示场景 - GDScript 辅助
+# 对标 godot_wry 的 example.tscn
+
+func _on_web_view_ipc_message(message):
+	print(\"Got IPC message: %s\" % message)
+	$WebView.PostMessage(\"Hello from Godot C#!\")"
+
+[node name="DemoBrowser" type="Control" unique_id=1501779452]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = SubResource("GDScript_demo")
+
+[node name="Toolbar" type="HBoxContainer" parent="." unique_id=1355431865]
+layout_mode = 1
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 804.0
+offset_bottom = 32.0
+
+[node name="BackButton" type="Button" parent="Toolbar" unique_id=1313048140]
+layout_mode = 2
+tooltip_text = "Back"
+text = "◀"
+
+[node name="ForwardButton" type="Button" parent="Toolbar" unique_id=1769454946]
+layout_mode = 2
+tooltip_text = "Forward"
+text = "▶"
+
+[node name="ReloadButton" type="Button" parent="Toolbar" unique_id=1808215373]
+layout_mode = 2
+tooltip_text = "Reload"
+text = "↻"
+
+[node name="UrlInput" type="LineEdit" parent="Toolbar" unique_id=222020949]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "https://www.bing.com"
+placeholder_text = "Enter URL and press Enter..."
+
+[node name="GoButton" type="Button" parent="Toolbar" unique_id=1492108622]
+layout_mode = 2
+text = "Go"
+
+[node name="DevToolsButton" type="Button" parent="Toolbar" unique_id=1536112868]
+layout_mode = 2
+tooltip_text = "Open DevTools (F12)"
+text = "Dev"
+
+[node name="StatusBar" type="HBoxContainer" parent="." unique_id=1836225566]
+layout_mode = 1
+offset_left = 4.0
+offset_top = 568.0
+offset_right = 804.0
+offset_bottom = 592.0
+
+[node name="StatusLabel" type="Label" parent="StatusBar" unique_id=1573052646]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Ready"
+
+[node name="UrlLabel" type="Label" parent="StatusBar" unique_id=1644261042]
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_alignment = 2
+
+[node name="WebViewControl" type="Control" parent="." unique_id=898438031]
+anchors_preset = 0
+offset_left = 131.0
+offset_top = 118.0
+offset_right = 687.0
+offset_bottom = 276.0
+script = ExtResource("1_aod8w")
+CurrentUrl = "https://cn.bing.com/"
+metadata/_custom_type_script = "uid://tylwvlscmhkx"

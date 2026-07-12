@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GodotWebViewSharp Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        h1 { font-size: 2em; margin-bottom: 10px; }
+        p { opacity: 0.9; margin-bottom: 20px; line-height: 1.6; }
+        .status { 
+            display: inline-block; 
+            padding: 8px 20px; 
+            background: rgba(255,255,255,0.2); 
+            border-radius: 20px; 
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+        button {
+            background: white;
+            color: #764ba2;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        #response {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            min-height: 40px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🌐 GodotWebViewSharp</h1>
+        <p>C# 跨平台 WebView for Godot 4<br>
+        对标 godot_wry，使用系统原生浏览器</p>
+        <div class="status" id="status">✅ WebView Loaded</div>
+        <br>
+        <button onclick="sendToGodot()">📨 Send Message to Godot</button>
+        <div id="response">Waiting for message from Godot...</div>
+    </div>
+
+    <script>
+        // 监听 Godot 发来的消息
+        document.addEventListener('message', (e) => {
+            document.getElementById('response').textContent = 
+                '📩 From Godot: ' + JSON.stringify(e.detail);
+        });
+
+        // 发送消息到 Godot
+        function sendToGodot() {
+            // 使用 WebView2 的 chrome.webview.postMessage
+            if (window.chrome?.webview?.postMessage) {
+                window.chrome.webview.postMessage(JSON.stringify({
+                    type: 'greeting',
+                    text: 'Hello from HTML page!',
+                    timestamp: new Date().toISOString()
+                }));
+                document.getElementById('response').textContent = '📤 Message sent to Godot!';
+            } else {
+                document.getElementById('response').textContent = 
+                    '⚠️ chrome.webview.postMessage not available';
+            }
+        }
+
+        // 显示焦点状态
+        setInterval(() => {
+            const status = document.getElementById('status');
+            if (document.hasFocus()) {
+                status.textContent = '✅ WebView Focused';
+                status.style.background = 'rgba(0,255,0,0.2)';
+            } else {
+                status.textContent = '⏸️ WebView Blurred';
+                status.style.background = 'rgba(255,255,255,0.1)';
+            }
+        }, 500);
+    </script>
+</body>
+</html>
