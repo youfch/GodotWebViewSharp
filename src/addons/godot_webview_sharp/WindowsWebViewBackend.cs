@@ -195,15 +195,11 @@ namespace WebViewSharp
                                 try {
                                     var wv = window.chrome && window.chrome.webview;
                                     if (wv && wv.postMessage) {
-                                        console.log('[IPC] sending:', msg);
                                         wv.postMessage(typeof msg === 'string' ? msg : JSON.stringify(msg));
-                                    } else {
-                                        console.warn('[IPC] chrome.webview not available');
                                     }
-                                } catch(e) { console.error('[IPC]', e); }
+                                } catch(e) {}
                             };
                         }
-                        console.log('[IPC] bridge installed');
                     })();
                 ");
                 _controller.CoreWebView2.Settings.IsWebMessageEnabled = true;
@@ -236,7 +232,7 @@ namespace WebViewSharp
                 if (_host?.Transparent == true)
                     SetTransparent(true);
 
-                GD.Print($"[WebViewSharp] WebView2 created, parent HWND=0x{_parentHwnd.ToInt64():X8}, child HWND=0x{_childHwnd.ToInt64():X8}");
+                GD.Print("[WebViewSharp] WebView2 created");
             }
             catch (Exception ex)
             {
@@ -407,7 +403,6 @@ namespace WebViewSharp
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             string message = e.TryGetWebMessageAsString();
-            GD.Print($"[WebViewSharp] WebMessage received: {(message?.Length > 80 ? message.Substring(0, 80) + "..." : message)}");
             if (!string.IsNullOrEmpty(message))
             {
                 WebMessageReceived?.Invoke(message);

@@ -32,11 +32,6 @@ namespace WebViewSharp
 
         public WebViewControl()
         {
-            // 手动注册信号，确保 GDScript 侧可连接
-            // 某些 Godot 版本 [Signal] 属性可能不会自动注册到脚本实例
-            AddUserSignal("ipc_message");
-            AddUserSignal("page_load_started");
-            AddUserSignal("page_load_finished");
         }
 
         // ═══════════════════════════════════════════════
@@ -322,12 +317,9 @@ namespace WebViewSharp
 
         private void OnWebMessageReceived(string message)
         {
-            // 如果启用了输入转发，先检查是否是内部输入事件
             if (ForwardInputEvents && InputEventRouter.TryProcessInputEvent(message, this))
                 return;
 
-            // 否则作为普通 IPC 消息触发 signal
-            GD.Print($"[WebViewSharp] Emitting IpcMessage signal: {message.Left(80)}");
             EmitSignal(SignalName.IpcMessage, message);
         }
 
