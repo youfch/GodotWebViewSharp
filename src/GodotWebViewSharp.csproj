@@ -7,11 +7,22 @@
     <RootNamespace>GodotWebViewSharp</RootNamespace>
   </PropertyGroup>
 
-  <!-- WebView2: Windows 系统浏览器 (对标 godot_wry 的 WRY) -->
+  <!-- 平台条件编译符号 -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <DefineConstants>$(DefineConstants);MACOS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <DefineConstants>$(DefineConstants);LINUX</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Windows: WebView2 -->
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3065.39" />
   </ItemGroup>
 
-  <!-- macOS: 将使用 WebKit (WKWebView) 原生框架 -->
-  <!-- Linux: 将使用 WebKitGTK -->
+  <!-- macOS: WKWebView (原生框架，无需 NuGet) -->
+  <!-- Linux: WebKitGTK (原生库，无需 NuGet) -->
 </Project>
