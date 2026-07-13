@@ -30,6 +30,15 @@ namespace WebViewSharp
         // ── 状态 ──
         private bool _isReady;
 
+        public WebViewControl()
+        {
+            // 手动注册信号，确保 GDScript 侧可连接
+            // 某些 Godot 版本 [Signal] 属性可能不会自动注册到脚本实例
+            AddUserSignal("ipc_message");
+            AddUserSignal("page_load_started");
+            AddUserSignal("page_load_finished");
+        }
+
         // ═══════════════════════════════════════════════
         //  导出属性 (对标 godot_wry WebView struct)
         // ═══════════════════════════════════════════════
