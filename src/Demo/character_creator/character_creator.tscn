@@ -1515,4 +1515,5 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("3_webview")
 Url = "res://Demo/character_creator/ui/index.html"
+Transparent = true
 metadata/_edit_use_anchors_ = true

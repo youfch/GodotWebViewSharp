@@ -83,6 +83,13 @@ namespace WebViewSharp
         public bool ClipboardEnabled { get; set; } = true;
 
         /// <summary>
+        /// 透明背景：webview 不遮挡父窗口内容
+        /// 对标 godot_wry 的 transparent
+        /// </summary>
+        [Export]
+        public bool Transparent { get; set; } = false;
+
+        /// <summary>
         /// 无痕模式（不保存浏览数据）
         /// </summary>
         [Export]

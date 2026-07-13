@@ -196,8 +196,8 @@ namespace WebViewSharp
                 _controller.CoreWebView2.SourceChanged += OnSourceChanged;
                 _controller.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
-                // 10. 设置虚拟主机映射：app.local → Godot 项目根目录
-                // 这样可以通过 https://app.local/ 访问 res:// 文件，ES Module 不受限
+                // 10. 设置虚拟主机映射：godot.local → Godot 项目根目录
+                // 这样 ES Module 通过 HTTPS 加载，不被 CORS 拦截
                 try
                 {
                     string projectPath = ProjectSettings.GlobalizePath("res://");
@@ -210,6 +210,10 @@ namespace WebViewSharp
                 {
                     GD.PrintErr($"[WebViewSharp] Virtual host mapping failed: {ex.Message}");
                 }
+
+                // 11. 透明背景（对标 godot_wry 的 transparent 属性）
+                if (_host?.Transparent == true)
+                    SetTransparent(true);
 
                 GD.Print($"[WebViewSharp] WebView2 created, parent HWND=0x{_parentHwnd.ToInt64():X8}, child HWND=0x{_childHwnd.ToInt64():X8}");
             }
@@ -331,6 +335,33 @@ namespace WebViewSharp
         {
             if (_controller != null)
                 _controller.IsVisible = visible;
+        }
+
+        public void SetTransparent(bool transparent)
+        {
+            if (_controller == null) return;
+
+            if (transparent)
+            {
+                // WebView2 背景透明（参考 604Assembly WebView2Edge.cs）
+                _controller.DefaultBackgroundColor = System.Drawing.Color.Transparent;
+
+                // 开启 Godot 窗口透明，使 WebView 透明区域穿透显示 3D 场景
+                // 注意：必须在 WebView2 创建成功后调用，否则有冲突
+                try
+                {
+                    DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.Transparent, true, 0);
+                    GD.Print("[WebViewSharp] Godot window transparent flag enabled");
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"[WebViewSharp] Failed to set window transparent: {ex.Message}");
+                }
+            }
+            else
+            {
+                _controller.DefaultBackgroundColor = System.Drawing.Color.White;
+            }
         }
 
         // ═══════════════════════════════════════════════

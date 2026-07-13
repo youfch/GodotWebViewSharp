@@ -43,6 +43,9 @@ namespace WebViewSharp
         // ── 可见性 ──
         void SetVisible(bool visible);
 
+        // ── 透明 ──
+        void SetTransparent(bool transparent);
+
         // ── 事件 ──
         event Action<string> NavigationStarting;
         event Action<bool, int> NavigationCompleted;
