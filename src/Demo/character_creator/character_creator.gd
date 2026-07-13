@@ -44,10 +44,10 @@ func _ready():
 	var _webview = $WebView
 	print("WebView found: ", _webview != null)
 	if _webview != null:
-		print("has ipc_message signal: ", _webview.has_signal(&"ipc_message"))
-		if _webview.has_signal(&"ipc_message"):
-			_webview.ipc_message.connect(_on_web_view_ipc_message)
-			print("ipc_message connected")
+		# 直接连接（不经过 has_signal 检查），看是否报错
+		var result = _webview.connect("ipc_message", _on_web_view_ipc_message)
+		print("ipc_message connect result: ", result)
+		print("ipc_message connect OK: ", result == OK)
 
 func _input(event):
 	if event is InputEventMouseButton:
