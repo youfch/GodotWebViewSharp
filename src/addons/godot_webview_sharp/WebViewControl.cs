@@ -189,6 +189,18 @@ namespace WebViewSharp
                 return;
 
             SyncPosition();
+
+            // Linux GTK 事件泵浦（参考 godot_wry）
+            if (OperatingSystem.IsLinux() && _webview is IDisposable)
+            {
+                try
+                {
+                    // 通过反射调用 PumpGtkEvents（避免编译时依赖 LINUX 条件编译）
+                    var method = _webview.GetType().GetMethod("PumpGtkEvents");
+                    method?.Invoke(_webview, null);
+                }
+                catch { }
+            }
         }
 
         // ═══════════════════════════════════════════════
@@ -199,7 +211,29 @@ namespace WebViewSharp
         {
             try
             {
-                _webview = new WindowsWebViewBackend();
+                if (OperatingSystem.IsMacOS())
+                {
+#if MACOS || MAC
+                    _webview = new MacWebViewBackend();
+#else
+                    GD.PrintErr("[WebViewSharp] macOS backend not compiled. Rebuild with target macOS.");
+                    return;
+#endif
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+#if LINUX
+                    _webview = new LinuxWebViewBackend();
+#else
+                    GD.PrintErr("[WebViewSharp] Linux backend not compiled. Rebuild with target Linux.");
+                    return;
+#endif
+                }
+                else
+                {
+                    _webview = new WindowsWebViewBackend();
+                }
+
                 await _webview.CreateAsync(this);
 
                 if (!_webview.IsCreated)
