@@ -12,7 +12,6 @@ namespace WebViewSharp
     ///
     /// 参考源：
     /// - godot_wry (Rust): 窗口嵌入、输入事件转发、IPC 模式
-    /// - GDCefGlue (C#): C# Godot 插件结构、ProcessEmbeddedMode、NativeWindowMethods
     /// - NativeWebView (C#): 跨平台系统 WebView 分层架构
     /// </summary>
     [Tool]
@@ -45,7 +44,7 @@ namespace WebViewSharp
         /// 初始 URL
         /// </summary>
         [Export]
-        public string Url { get; set; } = "https://www.bing.com";
+        public string Url { get; set; } = "about:blank";
 
         /// <summary>
         /// 初始 HTML（与 Url 二选一）
@@ -157,6 +156,10 @@ namespace WebViewSharp
 
         public override void _Ready()
         {
+            // 编辑器模式下不创建 WebView，避免嵌入窗口和初始化异常
+            if (Engine.IsEditorHint())
+                return;
+
             _isReady = true;
             InitializeWebView();
         }
@@ -168,6 +171,9 @@ namespace WebViewSharp
 
         public override void _Process(double delta)
         {
+            if (Engine.IsEditorHint())
+                return;
+
             if (_webview == null || !_webview.IsCreated)
                 return;
 
@@ -193,7 +199,7 @@ namespace WebViewSharp
 
                 // 加载 URL 或 HTML
                 if (!string.IsNullOrEmpty(Url))
-                    _webview.Navigate(Url);
+                    _webview.Navigate(ResolveUrl(Url));
                 else if (!string.IsNullOrEmpty(Html))
                     _webview.NavigateToString(Html);
 
@@ -224,7 +230,7 @@ namespace WebViewSharp
         }
 
         // ═══════════════════════════════════════════════
-        //  位置同步（参考 GDCefGlue ProcessEmbeddedMode + godot_wry update_webview）
+        //  位置同步（参考 godot_wry update_webview）
         // ═══════════════════════════════════════════════
 
         private void SyncPosition()
@@ -434,12 +440,12 @@ namespace WebViewSharp
 
         private string ResolveUrl(string url)
         {
-            // 支持 res:// 协议（对标 godot_wry）
+            // res:// → https://godot.local/ 虚拟主机映射
+            // 避免 file:// 协议下 ES Module 被 CORS 拦截
             if (url.StartsWith("res://"))
             {
                 string path = url.Substring(6).Replace("\\", "/");
-                string globalPath = ProjectSettings.GlobalizePath($"res://{path}");
-                return $"file:///{globalPath.Replace("\\", "/")}";
+                return $"https://godot.local/{path}";
             }
 
             // user:// 协议

@@ -13,7 +13,6 @@ namespace WebViewSharp
     ///
     /// 参考：
     /// - godot_wry: GetWindowLong/SetWindowLong 去除 WS_CLIPCHILDREN
-    /// - GDCefGlue ProcessEmbeddedMode: 每帧位置同步
     /// - 604Assembly WebView2Edge.cs: CoreWebView2Controller 初始化 + SetParent
     /// </summary>
     internal class WindowsWebViewBackend : IWebViewBackend
@@ -147,9 +146,14 @@ namespace WebViewSharp
                     SetWindowLong(_parentHwnd, GWL_STYLE, currentStyle & ~WS_CLIPCHILDREN);
                 }
 
-                // 3. 创建 WebView2 环境
-                var envOptions = new CoreWebView2EnvironmentOptions();
-                string userDataDir = GetUserDataDirectory();
+// 3. 创建 WebView2 环境
+            var envOptions = new CoreWebView2EnvironmentOptions
+            {
+                // 允许 file:// 加载 ES Module
+                AdditionalBrowserArguments = "--allow-file-access-from-files --disable-web-security"
+            };
+
+            string userDataDir = GetUserDataDirectory();
 
                 _environment = await CoreWebView2Environment.CreateAsync(
                     browserExecutableFolder: null,
@@ -191,6 +195,21 @@ namespace WebViewSharp
                 _controller.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
                 _controller.CoreWebView2.SourceChanged += OnSourceChanged;
                 _controller.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+
+                // 10. 设置虚拟主机映射：app.local → Godot 项目根目录
+                // 这样可以通过 https://app.local/ 访问 res:// 文件，ES Module 不受限
+                try
+                {
+                    string projectPath = ProjectSettings.GlobalizePath("res://");
+                    _controller.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        "godot.local", projectPath,
+                        CoreWebView2HostResourceAccessKind.Allow);
+                    GD.Print($"[WebViewSharp] Virtual host mapping: godot.local -> {projectPath}");
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"[WebViewSharp] Virtual host mapping failed: {ex.Message}");
+                }
 
                 GD.Print($"[WebViewSharp] WebView2 created, parent HWND=0x{_parentHwnd.ToInt64():X8}, child HWND=0x{_childHwnd.ToInt64():X8}");
             }
