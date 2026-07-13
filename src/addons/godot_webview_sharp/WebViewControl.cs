@@ -318,7 +318,8 @@ namespace WebViewSharp
                 return;
 
             // 否则作为普通 IPC 消息触发 signal
-            CallDeferred(nameof(EmitIpcMessage), message);
+            GD.Print($"[WebViewSharp] Emitting IpcMessage signal: {message.Left(80)}");
+            EmitSignal(SignalName.IpcMessage, message);
         }
 
         private void EmitPageLoadStarted(string url)

@@ -180,12 +180,33 @@ namespace WebViewSharp
                     SetParent(_childHwnd, _parentHwnd);
                 }
 
-                // 7. 注入输入转发脚本
+                // 7. 注入脚本
                 if (_host?.ForwardInputEvents == true)
                 {
                     await _controller.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(InputForwardingScript);
-                    _controller.CoreWebView2.Settings.IsWebMessageEnabled = true;
                 }
+
+                // 注入 WRY 兼容层：window.ipc.postMessage → chrome.webview.postMessage
+                await _controller.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(@"
+                    (function() {
+                        if (!window.ipc) window.ipc = {};
+                        if (!window.ipc.postMessage) {
+                            window.ipc.postMessage = function(msg) {
+                                try {
+                                    var wv = window.chrome && window.chrome.webview;
+                                    if (wv && wv.postMessage) {
+                                        console.log('[IPC] sending:', msg);
+                                        wv.postMessage(typeof msg === 'string' ? msg : JSON.stringify(msg));
+                                    } else {
+                                        console.warn('[IPC] chrome.webview not available');
+                                    }
+                                } catch(e) { console.error('[IPC]', e); }
+                            };
+                        }
+                        console.log('[IPC] bridge installed');
+                    })();
+                ");
+                _controller.CoreWebView2.Settings.IsWebMessageEnabled = true;
 
                 // 8. 设置初始背景
                 _controller.DefaultBackgroundColor = System.Drawing.Color.White;
@@ -386,6 +407,7 @@ namespace WebViewSharp
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             string message = e.TryGetWebMessageAsString();
+            GD.Print($"[WebViewSharp] WebMessage received: {(message?.Length > 80 ? message.Substring(0, 80) + "..." : message)}");
             if (!string.IsNullOrEmpty(message))
             {
                 WebMessageReceived?.Invoke(message);
