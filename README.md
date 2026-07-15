@@ -23,9 +23,9 @@ GodotWebViewSharp/
 │   ├── WebViewControl.Bindings.cs 属性/方法/信号注册
 │   ├── WebViewControl.Initialization.cs 生命周期
 │   ├── WebViewControl.Navigation.cs 导航 API
-│   ├── WindowsWebViewBackend.cs  WebView2 后端
 │   ├── IWebViewBackend.cs        后端接口
 │   ├── Platform/
+│   │   ├── WindowsWebViewBackend.cs  WebView2 后端
 │   │   ├── NativeWindowMethods.cs   跨平台窗口操作
 │   │   ├── MacWebViewBackend.cs     WKWebView stub
 │   │   └── LinuxWebViewBackend.cs   WebKitGTK stub
