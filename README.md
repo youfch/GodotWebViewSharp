@@ -100,7 +100,7 @@ extension\build.bat publish
 ## C# 插件模式说明
 
 ```bash
-cd src
+cd plugin
 dotnet build
 ```
 
