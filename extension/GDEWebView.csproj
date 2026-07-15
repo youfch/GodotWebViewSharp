@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PublishAot>true</PublishAot>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RootNamespace>GDEWebView</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ExcludeFromProductBuild>true</ExcludeFromProductBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Godot.Bindings">
+      <HintPath>Dll\Godot.Bindings.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Windows: WebView2 -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3065.39" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <!-- Platform-specific constants -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <DefineConstants>$(DefineConstants);MACOS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <DefineConstants>$(DefineConstants);LINUX</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Copy WebView2 runtime files after Build -->
+  <Target Name="CopyWebView2Files_Build" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PropertyGroup>
+      <OutDir>$(TargetDir)</OutDir>
+    </PropertyGroup>
+    <CallTarget Targets="CopyWebView2Files" />
+  </Target>
+
+  <!-- Copy WebView2 runtime files after Publish -->
+  <Target Name="CopyWebView2Files_Publish" AfterTargets="Publish" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PropertyGroup>
+      <OutDir>$(PublishDir)</OutDir>
+    </PropertyGroup>
+    <CallTarget Targets="CopyWebView2Files" />
+  </Target>
+
+  <Target Name="CopyWebView2Files">
+    <Message Text="=== Copying WebView2 runtime to $(OutDir) ===" Importance="high" />
+    <ItemGroup>
+      <WebView2Files Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x64\native\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(WebView2Files)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Message Text="=== WebView2 Copy Complete ===" Importance="high" />
+  </Target>
+
+</Project>

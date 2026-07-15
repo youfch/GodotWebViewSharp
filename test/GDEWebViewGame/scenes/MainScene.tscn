@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3 uid="uid://bx2gf7ytqfv3r"]
+
+[ext_resource type="Script" path="res://MainScript.gd" id="1_8mksh"]
+
+[node name="MainScene" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 1024.0
+offset_bottom = 600.0
+script = ExtResource("1_8mksh")
+
+[node name="WebView" type="Control" parent="."]
+custom_minimum_size = Vector2(800, 500)
+layout_mode = 0
+offset_left = 16.0
+offset_top = 48.0
+offset_right = 816.0
+offset_bottom = 548.0

@@ -1,0 +1,15 @@
+; Engine configuration file.
+; GDEWebView - GDExtension Test Project
+
+config_version=5
+
+[application]
+
+config/name="GDEWebView"
+run/main_scene="res://scenes/MainScene.tscn"
+config/features=PackedStringArray("4.6", "Forward Plus")
+config/icon="res://icon.svg"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
