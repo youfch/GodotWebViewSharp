@@ -15,7 +15,7 @@ if "%CONFIG%"=="" set CONFIG=Debug
 
 set PROJECT_DIR=%~dp0
 set EXTENSION_DIR=%PROJECT_DIR%extension
-set TEST_DIR=%PROJECT_DIR%test\GDEWebViewGame\lib
+set TEST_DIR=%PROJECT_DIR%test\GDExtensionGame\lib
 
 echo ========================================
 echo GDEWebView Build Script
@@ -64,5 +64,5 @@ echo [Build] Output: %EXTENSION_DIR%bin\%DOTNET_CONFIG%\net8.0\
 cd /d "%PROJECT_DIR%"
 echo.
 echo ========================================
-echo To test: Open test/GDEWebViewGame/ with Godot 4.6+
+echo To test: Open test/GDExtensionGame/ with Godot 4.6+
 echo ========================================

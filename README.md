@@ -6,7 +6,7 @@ Godot 4.x 系统原生 WebView 插件，支持 **C# 插件模式** (Godot.NET.Sd
 
 ```
 GodotWebViewSharp/
-├── src/                          ← C# 插件模式 (Godot.NET.Sdk)
+├── plugin/                          ← C# 插件模式 (Godot.NET.Sdk)
 │   ├── addons/godot_webview_sharp/  ← 插件源码
 │   │   ├── WebViewControl.cs         主控件
 │   │   ├── WindowsWebViewBackend.cs  WebView2 (Windows)
@@ -31,7 +31,7 @@ GodotWebViewSharp/
 │   │   └── LinuxWebViewBackend.cs   WebKitGTK stub
 │   └── Dll/                        godot-dotnet 绑定(需自行编译)
 │
-├── test/GDEWebViewGame/           ← GDExtension 测试工程
+├── test/GDExtensionGame/           ← GDExtension 测试工程
 │   ├── project.godot
 │   ├── lib/gde_webview.gdextension
 │   └── MainScript.gd
@@ -41,7 +41,7 @@ GodotWebViewSharp/
 
 ## 两种模式对比
 
-| 特性 | C# 插件模式 (src/) | GDExtension 模式 (extension/) |
+| 特性 | C# 插件模式 (plugin/) | GDExtension 模式 (extension/) |
 |------|-------------------|------------------------------|
 | 项目 SDK | `Godot.NET.Sdk` | `Microsoft.NET.Sdk` + `PublishAot` |
 | 入口方式 | Godot Mono 自动加载 | `[UnmanagedCallersOnly]` 原生入口 |
@@ -95,7 +95,7 @@ extension\build.bat publish
 ### 部署
 
 将 `extension/bin/Release/net8.0/win-x64/publish/` 目录内容复制到
-`test/GDEWebViewGame/lib/`，然后用 Godot 4.6+ 打开 `test/GDEWebViewGame/` 运行。
+`test/GDExtensionGame/lib/`，然后用 Godot 4.6+ 打开 `test/GDExtensionGame/` 运行。
 
 ## C# 插件模式说明
 
@@ -104,7 +104,7 @@ cd src
 dotnet build
 ```
 
-然后在 Godot 编辑器中打开 `src/project.godot` 即可使用。
+然后在 Godot 编辑器中打开 `plugin/project.godot` 即可使用。
 
 ## 参考项目
 
