@@ -43,7 +43,8 @@ var rotating = false
 func _ready():
 	var _webview = $WebView
 	if _webview != null:
-		_webview.connect("IpcMessage", _on_web_view_ipc_message)
+		var result = _webview.connect("IpcMessage", _on_web_view_ipc_message)
+		print("IpcMessage connect result: ", result, " (OK=0)")
 
 func _input(event):
 	if event is InputEventMouseButton:
@@ -58,6 +59,7 @@ func _input(event):
 		$Character.rotate_y(rel.x * .5 * delta)
 
 func _on_web_view_ipc_message(message):
+	print("IPC received: ", message.left(80))
 	var data = JSON.parse_string(message)
 	
 	match data.type:

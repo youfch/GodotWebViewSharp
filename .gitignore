@@ -87,6 +87,10 @@ bld/
 *.code-workspace
 .history/
 
+# Workspace ignores
+conversations/
+temp/
+
 # JetBrains Rider ignores
 .idea/
 *.sln.iml
