@@ -91,6 +91,7 @@ bld/
 conversations/
 temp/
 .omo/
+plugin/addons/godot_ai/
 
 # JetBrains Rider ignores
 .idea/
