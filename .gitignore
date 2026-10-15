@@ -90,6 +90,7 @@ bld/
 # Workspace ignores
 conversations/
 temp/
+.omo/
 
 # JetBrains Rider ignores
 .idea/
