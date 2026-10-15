@@ -4,7 +4,10 @@ using Godot;
 using Godot.Bridge;
 
 [assembly: DisableGodotEntryPointGeneration]
-[assembly: DisableRuntimeMarshalling]
+// 注意：不要再加 [assembly: DisableRuntimeMarshalling]。
+// Windows 后端要用 user32 的 P/Invoke（GetWindowLong/FindWindowEx 等，含字符串参数），
+// 关掉运行时 marshalling 后 NativeAOT 会在创建 webview 时报
+// "requires marshalling that is not yet supported by this compiler"，直接导致 webview 建不起来。
 
 namespace GDEWebView;
 

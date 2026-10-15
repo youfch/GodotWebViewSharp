@@ -1,8 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <PublishAot>true</PublishAot>
+    <!-- WebView2 走 COM，NativeAOT 默认不支持内置 COM 互操作，
+         缺这个开关会在创建 webview 时报 "COM Interop requires ComWrapper instance registered for marshalling" -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <RootNamespace>GDEWebView</RootNamespace>
@@ -11,6 +14,11 @@
   <PropertyGroup>
     <ExcludeFromProductBuild>true</ExcludeFromProductBuild>
   </PropertyGroup>
+
+  <!-- NativeAOT 下 WebView2 是 COM 组件，需要显式打开内置 COM 互操作特性开关 -->
+  <ItemGroup>
+    <IlcArg Include="--feature:System.Runtime.InteropServices.BuiltInComInterop.IsSupported=true" />
+  </ItemGroup>
 
   <ItemGroup>
     <Reference Include="Godot.Bindings">

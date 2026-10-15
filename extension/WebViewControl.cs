@@ -32,14 +32,12 @@ public partial class WebViewControl : Control
     private IWebViewBackend _webview;
 
     // ── 位置/大小同步缓存 ──
-    private Vector2 _previousGlobalPos;
-    private Vector2 _previousSize;
-    private Vector2I _previousWindowPos;
-    private float _previousContentScale = 1.0f;
+    private Rect2I? _previousRect;
 
     // ── 状态 ──
     private bool _isReady;
     private bool _browserCreated;
+    private bool _visibilityHooked;
 
     // ── 构造 ──
     public WebViewControl()

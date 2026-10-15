@@ -46,6 +46,7 @@ internal class WindowsWebViewBackend : IWebViewBackend
     private IntPtr _parentHwnd;
     private IntPtr _childHwnd;
     private WebViewControl _host;
+    private bool _devToolsOpen;
 
     // ── 事件 ──
     public event Action<string> NavigationStarting;
@@ -119,20 +120,33 @@ internal class WindowsWebViewBackend : IWebViewBackend
             }
 
             // 3. 创建 WebView2 环境
+            //    不再整体关闭 web 安全（原来带的 --allow-file-access-from-files --disable-web-security
+            //    已移除）：res:// 资源由 WebResourceServer 用 Godot 的 FileAccess 读，走 https://godot.local/，
+            //    ES Module / fetch 都不会被 CORS 拦截，无需牺牲安全性。
             var envOptions = new CoreWebView2EnvironmentOptions
             {
-                AdditionalBrowserArguments = "--allow-file-access-from-files --disable-web-security"
+                AdditionalBrowserArguments = BuildBrowserArguments(),
             };
 
             string userDataDir = GetUserDataDirectory();
+
             _environment = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null,
                 userDataFolder: userDataDir,
                 options: envOptions
             );
 
-            // 4. 创建 WebView2 控制器（嵌入到 Godot 窗口）
-            _controller = await _environment.CreateCoreWebView2ControllerAsync(_parentHwnd);
+            // 4. 创建 WebView2 控制器（无痕模式需要 controller options）
+            if (_host?.Incognito == true)
+            {
+                var controllerOptions = _environment.CreateCoreWebView2ControllerOptions();
+                controllerOptions.IsInPrivateModeEnabled = true;
+                _controller = await _environment.CreateCoreWebView2ControllerAsync(_parentHwnd, controllerOptions);
+            }
+            else
+            {
+                _controller = await _environment.CreateCoreWebView2ControllerAsync(_parentHwnd);
+            }
 
             if (_controller == null)
             {
@@ -174,31 +188,29 @@ internal class WindowsWebViewBackend : IWebViewBackend
             ");
             _controller.CoreWebView2.Settings.IsWebMessageEnabled = true;
 
-            // 9. 设置虚拟主机映射
-            try
-            {
-                string projectPath = ProjectSettings.Singleton.GlobalizePath("res://");
-                _controller.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "godot.local", projectPath,
-                    CoreWebView2HostResourceAccessKind.Allow);
-                GD.Print($"[GDEWebView] Virtual host mapping: godot.local -> {projectPath}");
-            }
-            catch (Exception ex)
-            {
-                GD.PrintErr($"[GDEWebView] Virtual host mapping failed: {ex.Message}");
-            }
+            // 9. 资源服务：拦截 https://godot.local/*（res://）与 https://godot-user.local/*（user://）
+            //    走自定义响应而不是 SetVirtualHostNameToFolderMapping —— 后者映射的是文件系统目录，
+            //    导出成 PCK 后 res:// 资源读不到；这里经 Godot 的 FileAccess 读，PCK 内也能读
+            WebResourceServer.Install(_controller.CoreWebView2);
+            _controller.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
+            GD.Print($"[GDEWebView] Resource server: https://{WebResourceServer.ResHost}/ -> res://, " +
+                     $"https://{WebResourceServer.UserHost}/ -> user://");
 
             // 10. 连接事件
             _controller.CoreWebView2.NavigationStarting += OnNavigationStarting;
             _controller.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
             _controller.CoreWebView2.SourceChanged += OnSourceChanged;
             _controller.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+            _controller.CoreWebView2.PermissionRequested += OnPermissionRequested;
 
             // 11. 透明背景
             if (_host?.Transparent == true)
                 SetTransparent(true);
 
-            GD.Print("[GDEWebView] WebView2 created");
+            GD.Print($"[GDEWebView] WebView2 created " +
+                     $"(incognito={_host?.Incognito == true}, autoplay={_host?.Autoplay == true}, " +
+                     $"userAgent={(string.IsNullOrEmpty(_host?.UserAgent) ? "(default)" : _host.UserAgent)}, " +
+                     $"browserArgs=[{BuildBrowserArguments()}])");
         }
         catch (Exception ex)
         {
@@ -218,15 +230,59 @@ internal class WindowsWebViewBackend : IWebViewBackend
         settings.IsScriptEnabled = true;
         settings.AreDefaultContextMenusEnabled = true;
 
+        // 自定义 User-Agent（原来声明了属性但从未生效）
+        if (_host != null && !string.IsNullOrEmpty(_host.UserAgent))
+            settings.UserAgent = _host.UserAgent;
+
         _controller.IsVisible = true;
 
         // 设置默认背景色
-        var bgColor = _host?.BackgroundColor ?? Colors.White;
+        Color bgColor = _host?.BackgroundColor ?? NamedColors.White;
         _controller.DefaultBackgroundColor = System.Drawing.Color.FromArgb(
             (int)(bgColor.A * 255),
             (int)(bgColor.R * 255),
             (int)(bgColor.G * 255),
             (int)(bgColor.B * 255));
+    }
+
+    /// <summary>
+    /// 组装 Chromium 命令行参数。只在需要时加，默认不加任何降低安全性的开关。
+    /// </summary>
+    private string BuildBrowserArguments()
+    {
+        var args = new System.Collections.Generic.List<string>();
+
+        // 自动播放媒体（对标 godot_wry 的 autoplay）
+        if (_host?.Autoplay == true)
+            args.Add("--autoplay-policy=no-user-gesture-required");
+
+        return string.Join(" ", args);
+    }
+
+    /// <summary>
+    /// 权限请求：剪贴板读取直接放行（extension 侧暂无 ClipboardEnabled 开关，先对齐"默认可用"）。
+    /// </summary>
+    private void OnPermissionRequested(object sender, CoreWebView2PermissionRequestedEventArgs e)
+    {
+        if (e.PermissionKind == CoreWebView2PermissionKind.ClipboardRead)
+            e.State = CoreWebView2PermissionState.Allow;
+    }
+
+    /// <summary>
+    /// 资源请求拦截：只接管我们自己的虚拟主机，其余不设置响应，交给 WebView2 正常走网络。
+    /// </summary>
+    private void OnWebResourceRequested(object sender, CoreWebView2WebResourceRequestedEventArgs e)
+    {
+        try
+        {
+            var response = WebResourceServer.TryBuildResponse(_environment, e);
+            if (response != null)
+                e.Response = response;
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[GDEWebView] Resource request failed for {e.Request.Uri}: {ex.Message}");
+        }
     }
 
     // ═══════════════════════════════════════════════
@@ -265,14 +321,46 @@ internal class WindowsWebViewBackend : IWebViewBackend
     }
 
     // ═══════════════════════════════════════════════
+    //  缩放
+    // ═══════════════════════════════════════════════
+
+    public void SetZoomFactor(double factor)
+    {
+        if (_controller != null)
+            _controller.ZoomFactor = factor;
+    }
+
+    // ═══════════════════════════════════════════════
+    //  打印
+    // ═══════════════════════════════════════════════
+
+    public void Print()
+    {
+        _controller?.CoreWebView2?.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
+    }
+
+    // ═══════════════════════════════════════════════
     //  DevTools
     // ═══════════════════════════════════════════════
 
-    public void OpenDevTools() => _controller?.CoreWebView2?.OpenDevToolsWindow();
+    public void OpenDevTools()
+    {
+        if (_controller?.CoreWebView2 == null) return;
+
+        _controller.CoreWebView2.OpenDevToolsWindow();
+        _devToolsOpen = true;
+    }
+
     public void CloseDevTools()
     {
-        ExecuteScript("if (window.__gdeWebViewDevTools) window.__gdeWebViewDevTools.close();");
+        if (_controller?.CoreWebView2 == null) return;
+
+        // WebView2 没有"关闭 DevTools"的公开 API，这里只维护状态标记
+        // （用户在开发者工具窗口里手动关掉的话，这个标记不会自动更新）
+        _devToolsOpen = false;
     }
+
+    public bool IsDevToolsOpen => _devToolsOpen;
 
     // ═══════════════════════════════════════════════
     //  数据 / 焦点 / 可见性
@@ -286,6 +374,16 @@ internal class WindowsWebViewBackend : IWebViewBackend
     }
 
     public void Focus() => _controller?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+
+        /// <summary>
+        /// 把焦点从 webview 子窗口切回 Godot 父窗口（对标 godot_wry 的 focus_parent()）。
+        /// 点击 webview 区域外的 Godot 场景时需要主动抢回焦点，否则键盘事件会一直留在网页里。
+        /// </summary>
+        public void FocusParent()
+        {
+            if (_parentHwnd != IntPtr.Zero)
+                NativeWindowMethods.SetPlatformFocus(_parentHwnd);
+        }
 
     public void SetVisible(bool visible)
     {
@@ -413,6 +511,8 @@ internal class WindowsWebViewBackend : IWebViewBackend
                 _controller.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
                 _controller.CoreWebView2.SourceChanged -= OnSourceChanged;
                 _controller.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
+                _controller.CoreWebView2.PermissionRequested -= OnPermissionRequested;
+                _controller.CoreWebView2.WebResourceRequested -= OnWebResourceRequested;
             }
             _controller.Close();
             _controller = null;

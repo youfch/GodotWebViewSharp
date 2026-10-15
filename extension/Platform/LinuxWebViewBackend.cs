@@ -88,10 +88,14 @@ internal class LinuxWebViewBackend : IWebViewBackend
     public void GoBack() { }
     public void GoForward() { }
     public void ExecuteScript(string script) { }
+    public void SetZoomFactor(double factor) { }
+    public void Print() { }
     public void OpenDevTools() { }
     public void CloseDevTools() { }
+    public bool IsDevToolsOpen => false;
     public void ClearBrowsingData() { }
     public void Focus() { }
+    public void FocusParent() { }
     public void SetVisible(bool visible) { }
     public void SetTransparent(bool transparent) { }
 
