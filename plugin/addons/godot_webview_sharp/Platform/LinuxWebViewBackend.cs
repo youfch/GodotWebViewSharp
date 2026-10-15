@@ -57,8 +57,11 @@ namespace WebViewSharp
         public void GoBack() { }
         public void GoForward() { }
         public void ExecuteScript(string s) { }
+        public void SetZoomFactor(double f) { }
+        public void Print() { }
         public void OpenDevTools() { }
         public void CloseDevTools() { }
+        public bool IsDevToolsOpen => false;
         public void ClearBrowsingData() { }
         public void Focus() { }
         public void FocusParent() { }

@@ -30,9 +30,16 @@ namespace WebViewSharp
         // ── JS 执行 ──
         void ExecuteScript(string script);
 
+        // ── 缩放 ──
+        void SetZoomFactor(double factor);
+
+        // ── 打印 ──
+        void Print();
+
         // ── DevTools ──
         void OpenDevTools();
         void CloseDevTools();
+        bool IsDevToolsOpen { get; }
 
         // ── 数据 ──
         void ClearBrowsingData();

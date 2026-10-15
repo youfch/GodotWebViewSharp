@@ -554,23 +554,75 @@ namespace WebViewSharp
             _webview?.Focus();
         }
 
+        /// <summary>
+        /// 把焦点还回 Godot 父窗口。
+        /// 对标 godot_wry 的 focus_parent()：点击 webview 区域外的 Godot 场景时，
+        /// 需要主动把焦点抢回来，否则键盘事件会一直留在网页里。
+        /// </summary>
+        public void FocusParent()
+        {
+            _webview?.FocusParent();
+        }
+
+        /// <summary>
+        /// 改变页面缩放，1.0 为默认。
+        /// 对标 godot_wry 的 zoom(factor)
+        /// </summary>
+        public void Zoom(float factor)
+        {
+            _webview?.SetZoomFactor(factor);
+        }
+
+        /// <summary>
+        /// 打开打印对话框。
+        /// 对标 godot_wry 的 print()
+        /// </summary>
+        public void Print()
+        {
+            _webview?.Print();
+        }
+
+        /// <summary>
+        /// 只切换原生 webview 的可见性，不动 Control 自己的 visible。
+        /// 对标 godot_wry 的 set_visible()。
+        ///
+        /// 注意没有沿用同名 <c>SetVisible</c>：Control 基类本来就有 set_visible（visible 属性的 setter），
+        /// 同名会把基类方法遮蔽掉，GDScript 里 <c>$WebView.set_visible(false)</c> 的含义会被悄悄改掉。
+        /// 控件自身 visible 变化时的同步是自动的。
+        /// </summary>
+        public void SetWebViewVisible(bool visible)
+        {
+            _webview?.SetVisible(visible);
+        }
+
+        /// <summary>
+        /// DevTools 窗口是否打开。
+        /// 对标 godot_wry 的 is_devtools_open()。
+        ///
+        /// WebView2 没有查询 API，只能返回我们自己记录的状态：
+        /// 用 OpenDevTools()/CloseDevTools() 开关能正确反映，
+        /// 但用户在右键菜单里手动打开/关闭 DevTools 时看不到。
+        /// </summary>
+        public bool IsDevToolsOpen()
+        {
+            return _webview?.IsDevToolsOpen ?? false;
+        }
+
         // ═══════════════════════════════════════════════
         //  辅助方法
         // ═══════════════════════════════════════════════
 
         private string ResolveUrl(string url)
         {
-            // res:// → https://godot.local/ 虚拟主机映射
-            // 避免 file:// 协议下 ES Module 被 CORS 拦截
+            // res:// → https://godot.local/、user:// → https://godot-user.local/
+            // 由 WebResourceServer 拦截并用 Godot 的 FileAccess 读取（PCK 内也能读），
+            // 避免 file:// 协议下 ES Module 被 CORS 拦截，也不需要关闭 web 安全
             if (url.StartsWith("res://"))
             {
                 string path = url.Substring(6).Replace("\\", "/");
                 return $"https://godot.local/{path}";
             }
 
-            // user:// → https://godot-user.local/ 虚拟主机映射
-            // （原来映射成 file:///，那样必须整体关掉 web 安全才能加载 ES Module；
-            //   走虚拟主机后就不需要 --disable-web-security 了）
             if (url.StartsWith("user://"))
             {
                 string path = url.Substring(7).Replace("\\", "/");
