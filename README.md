@@ -65,19 +65,26 @@ GodotWebViewSharp/
 
 ### 前置要求
 
-1. **Godot 4.6+** 带 .NET 支持
-2. **.NET 8 SDK** 或更高
+1. **Godot 4.7+** 带 .NET 支持（godot-dotnet 的绑定是按 4.7 的 extension_api.json 生成的）
+2. **.NET 10 SDK**（同一原因：Godot.Bindings 目标框架是 net10.0）
 3. **WebView2 Runtime** (Windows 11 内置，Win10 需安装)
+
+> [!WARNING]
+> 已知限制：NativeAOT 下 `Microsoft.Web.WebView2` 的托管包装建不起 webview，报
+> `COM Interop requires ComWrapper instance registered for marshalling`（试过
+> `BuiltInComInteropSupport` 与 `IlcArg --feature:System.Runtime.InteropServices.BuiltInComInterop.IsSupported=true`
+> 都没绕过）。扩展本体能加载、类型与方法都注册正常，卡在 COM 这一层；
+> 后续要么改成 CsWin32/`[LibraryImport]` 直接调 COM，要么放弃 AOT（放弃 AOT 就等于要带 .NET 运行时）。
 
 ### 获取 godot-dotnet 绑定
 
 ```bash
-git clone https://github.com/raulsntos/godot-dotnet.git
+git clone --depth 1 https://github.com/raulsntos/godot-dotnet.git
 cd godot-dotnet
-dotnet build -p:GenerateGodotBindings=true
+dotnet build src/Godot.Bindings/Godot.Bindings.csproj -p:GenerateGodotBindings=true -c Release
 ```
 
-将生成的 `Godot.Bindings.dll` 及相关文件复制到 `extension/Dll/`。
+生成的 `artifacts/bin/Godot.Bindings/Release/net10.0/Godot.Bindings.dll` 复制到 `extension/Dll/`。
 
 ### 构建
 
@@ -127,6 +134,45 @@ $WebView.connect("IpcMessage", _on_ipc)                          # IpcMessage / 
 > `SetWebViewVisible` 对应 godot_wry 的 `set_visible()`：只切原生 webview 的可见性。之所以不叫
 > `SetVisible`，是因为 `Control` 基类本来就有 `set_visible`（`visible` 属性的 setter），同名会把基类
 > 方法遮蔽掉、让 `$WebView.set_visible(false)` 的含义变得反直觉。控件自身 `visible` 变化时的同步是自动的。
+
+## 导出（部署）
+
+网页资源（html / css / js / wasm / 字体 / 图片…）默认**不会**被打进导出包 —— Godot 只导出它认识的资源类型。
+所以导出前必须把 web 目录加进白名单：
+
+**项目 → 导出 → 选中预设 → 资源 → 「导出非资源文件/文件夹的过滤器」**，例如：
+
+```
+*.html, *.css, *.js, *.mjs, *.json, *.wasm, *.svg, *.png, *.webp, *.ttf, *.woff2, Demo/character_creator/ui/**
+```
+
+以本仓库的 character_creator 为例，它是个 SvelteKit 构建产物，里面有 `_app/immutable/chunks/*.js`
+这类深层目录，直接写目录通配 `Demo/character_creator/ui/**` 最省事。
+
+### 导出后为什么 res:// 还能用
+
+导出后 `res://` 的内容位于 `.pck` 内，磁盘上并没有对应文件。插件的资源服务**不映射文件夹**，
+而是拦截 `https://godot.local/*`（`res://`）与 `https://godot-user.local/*`（`user://`）这两个请求，
+再用 Godot 的 `FileAccess` 读内容 —— `FileAccess` 能读 `.pck`，所以：
+
+- 不需要把 web 文件放到 exe 旁边，也不需要改 `Url` 的写法（`res://Demo/.../index.html` 照写）
+- 不需要 `--disable-web-security` 之类的开关
+- 「导出为独立 PCK」和「打包进 exe」两种模式都可以
+- 目录形式也能用：`LoadUrl("res://Demo/character_creator/ui")` 会自动回退到该目录下的 `index.html`
+
+### 目标机器的要求
+
+- **WebView2 Runtime**：Windows 11 自带；Windows 10 需要装一次
+  （<https://developer.microsoft.com/microsoft-edge/webview2/>）
+- 调试开关在导出包里照样生效：`DevToolsEnabled = true`（默认）时可用 F12 或右键菜单打开 DevTools
+
+### 出问题时的排查顺序
+
+1. 页面 404 / 白屏 → 十有八九是上面的 Filters 漏了扩展名（在 webview 里按 F12 看 Network 面板最直接）
+2. 启动即报 `Failed to create WebView2 controller` → 目标机没装 WebView2 Runtime
+3. 报找不到 `WebView2Loader.dll` → 把 NuGet 包（`microsoft.web.webview2`）里的
+   `runtimes/win-x64/native/WebView2Loader.dll` 拷到 exe 同目录
+4. 正常启动时日志里会有两行资源服务映射：`Resource server: https://godot.local/ -> res://, ...`
 
 ## 参考项目
 

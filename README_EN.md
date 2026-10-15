@@ -65,19 +65,26 @@ Based on **Microsoft Edge WebView2** (built-in), supports:
 
 ### Prerequisites
 
-1. **Godot 4.6+** with .NET support
-2. **.NET 8 SDK** or later
+1. **Godot 4.7+** with .NET support (godot-dotnet bindings are generated from the 4.7 `extension_api.json`)
+2. **.NET 10 SDK** (same reason: `Godot.Bindings` targets net10.0)
 3. **WebView2 Runtime** (Windows 11 built-in, Win10 requires install)
+
+> [!WARNING]
+> Known limitation: under NativeAOT the `Microsoft.Web.WebView2` managed wrapper cannot create a webview —
+> it fails with `COM Interop requires ComWrapper instance registered for marshalling` (neither
+> `BuiltInComInteropSupport` nor `IlcArg --feature:System.Runtime.InteropServices.BuiltInComInterop.IsSupported=true`
+> got past it). The extension itself loads and its type/methods register correctly; it is stuck at the COM layer.
+> The way forward is either CsWin32/`[LibraryImport]` interop, or dropping AOT (which means shipping the .NET runtime).
 
 ### Get godot-dotnet Bindings
 
 ```bash
-git clone https://github.com/raulsntos/godot-dotnet.git
+git clone --depth 1 https://github.com/raulsntos/godot-dotnet.git
 cd godot-dotnet
-dotnet build -p:GenerateGodotBindings=true
+dotnet build src/Godot.Bindings/Godot.Bindings.csproj -p:GenerateGodotBindings=true -c Release
 ```
 
-Copy the generated `Godot.Bindings.dll` and related files to `extension/Dll/`.
+Copy the generated `artifacts/bin/Godot.Bindings/Release/net10.0/Godot.Bindings.dll` to `extension/Dll/`.
 
 ### Build
 
@@ -129,6 +136,50 @@ Available methods: `LoadUrl` / `LoadHtml` / `Reload` / `GoBack` / `GoForward` / 
 > `SetVisible` because `Control` already has `set_visible` (the setter of the `visible` property) —
 > shadowing it would silently change what `$WebView.set_visible(false)` means. The webview follows the
 > control's own `visible` changes automatically.
+
+## Exporting
+
+Web assets (html / css / js / wasm / fonts / images…) are **not** packed into the exported build by default —
+Godot only exports resource types it recognizes. Before exporting, whitelist your web folder:
+
+**Project → Export → select the preset → Resources → "Filters to export non-resource files/folders"**, for example:
+
+```
+*.html, *.css, *.js, *.mjs, *.json, *.wasm, *.svg, *.png, *.webp, *.ttf, *.woff2, Demo/character_creator/ui/**
+```
+
+The `character_creator` demo in this repo is a SvelteKit build output, so it has deep folders like
+`_app/immutable/chunks/*.js` — a directory wildcard (`Demo/character_creator/ui/**`) is the easiest way.
+
+### Why res:// still works after exporting
+
+In an exported build the contents of `res://` live inside the `.pck` and have no filesystem counterpart.
+The plugin's resource server does **not** map a folder: it intercepts requests for
+`https://godot.local/*` (`res://`) and `https://godot-user.local/*` (`user://`) and serves them through
+Godot's `FileAccess`, which can read `.pck` files. Therefore:
+
+- no need to copy web files next to the executable, and no need to change how `Url` is written
+  (`res://Demo/.../index.html` keeps working)
+- no need for switches like `--disable-web-security`
+- both "dedicated PCK file" and "packed into the executable" export modes work
+- directory URLs work too: `LoadUrl("res://Demo/character_creator/ui")` falls back to that folder's `index.html`
+
+### Requirements on the target machine
+
+- **WebView2 Runtime**: bundled with Windows 11; Windows 10 needs a one-time install
+  (<https://developer.microsoft.com/microsoft-edge/webview2/>)
+- DevTools keep working in exported builds: with `DevToolsEnabled = true` (the default) you can press F12
+  or use the context menu
+
+### Troubleshooting order
+
+1. Page 404 / blank → most likely the Filters above missed an extension (open DevTools with F12 and look at
+   the Network panel — that tells you immediately)
+2. `Failed to create WebView2 controller` right at startup → WebView2 Runtime is missing on the target machine
+3. `WebView2Loader.dll` not found → copy `runtimes/win-x64/native/WebView2Loader.dll` from the
+   `microsoft.web.webview2` NuGet package next to the executable
+4. On a healthy start the log shows the two resource-server mappings:
+   `Resource server: https://godot.local/ -> res://, ...`
 
 ## Reference Projects
 
