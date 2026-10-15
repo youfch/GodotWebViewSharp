@@ -54,6 +54,7 @@ namespace WebViewSharp
         public void CloseDevTools() { }
         public void ClearBrowsingData() { }
         public void Focus() { }
+        public void FocusParent() { }
         public void SetVisible(bool v) { }
         public void SetTransparent(bool t) { }
         public void Dispose() { }

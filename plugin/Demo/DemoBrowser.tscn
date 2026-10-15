@@ -8,18 +8,18 @@ script = ExtResource("2_s4e5q")
 
 [node name="Window" type="Window" parent="." unique_id=2098973970]
 oversampling_override = 1.0
-initial_position = 1
+position = Vector2i(0, 36)
 size = Vector2i(800, 520)
 
 [node name="WebView" type="Control" parent="Window" unique_id=161087822]
 layout_mode = 3
-anchors_preset = 0
-offset_left = 4.0
-offset_top = 4.0
-offset_right = 796.0
-offset_bottom = 516.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_aod8w")
-Url = "res://Demo/character_creator/ui/index.html"
+Url = "https://cn.bing.com/"
 
 [node name="Button" type="Button" parent="." unique_id=195035734]
 offset_top = 524.0

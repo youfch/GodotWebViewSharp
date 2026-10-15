@@ -18,6 +18,7 @@ namespace WebViewSharp
     internal static class InputEventRouter
     {
         private static MouseButtonMask _currentButtonMask = (MouseButtonMask)0;
+        private static bool _errorLogged;
 
         /// <summary>
         /// 尝试将 WebView IPC 消息作为输入事件处理。
@@ -42,8 +43,10 @@ namespace WebViewSharp
                 var viewport = target.GetViewport();
                 if (viewport == null) return true; // 消费掉，但不是有效事件
 
-                float x = dict.GetValueOrDefault("x", 0.0f);
-                float y = dict.GetValueOrDefault("y", 0.0f);
+                float x = (float)Num(dict, "x");
+                float y = (float)Num(dict, "y");
+                // 网页坐标是 WebView 视口的 CSS 像素，加上控件在**自身视口**里的原点
+                // （子窗口内的 Control，GlobalPosition 是子窗口视口坐标，PushInput 也发给同一个视口，两者一致）
                 var globalPos = target.GlobalPosition;
                 float vpX = globalPos.X + x;
                 float vpY = globalPos.Y + y;
@@ -68,16 +71,22 @@ namespace WebViewSharp
                         return false;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                // 不再静默吞掉：转发失败时至少留下一次痕迹，否则表现为"点击穿透静默失效"
+                if (!_errorLogged)
+                {
+                    _errorLogged = true;
+                    GD.PrintErr($"[WebViewSharp] Input event forwarding failed: {ex.Message} (payload: {json})");
+                }
                 return false;
             }
         }
 
         private static bool HandleMouseMove(Dictionary dict, float vpX, float vpY, Viewport viewport)
         {
-            float movementX = dict.GetValueOrDefault("movementX", 0.0f);
-            float movementY = dict.GetValueOrDefault("movementY", 0.0f);
+            float movementX = (float)Num(dict, "movementX");
+            float movementY = (float)Num(dict, "movementY");
 
             var ev = new InputEventMouseMotion
             {
@@ -92,7 +101,7 @@ namespace WebViewSharp
 
         private static bool HandleMouseButton(string type, Dictionary dict, float vpX, float vpY, Viewport viewport)
         {
-            int button = dict.GetValueOrDefault("button", 0);
+            int button = Int(dict, "button");
             var godotButton = MapMouseButton(button);
             bool pressed = type == "_mouse_down";
 
@@ -113,8 +122,8 @@ namespace WebViewSharp
 
         private static bool HandleMouseWheel(Dictionary dict, float vpX, float vpY, Viewport viewport)
         {
-            float deltaX = dict.GetValueOrDefault("deltaX", 0.0f);
-            float deltaY = dict.GetValueOrDefault("deltaY", 0.0f);
+            float deltaX = (float)Num(dict, "deltaX");
+            float deltaY = (float)Num(dict, "deltaY");
             var position = new Vector2(vpX, vpY);
 
             if (deltaY != 0.0f)
@@ -153,17 +162,17 @@ namespace WebViewSharp
 
         private static bool HandleKeyboard(string type, Dictionary dict, Viewport viewport)
         {
-            string keyStr = dict.GetValueOrDefault("key", "");
+            string keyStr = Str(dict, "key");
             var godotKey = MapGodotKey(keyStr);
 
             var ev = new InputEventKey
             {
                 Keycode = godotKey,
                 Pressed = type == "_key_down",
-                ShiftPressed = dict.GetValueOrDefault("shift", false),
-                CtrlPressed = dict.GetValueOrDefault("ctrl", false),
-                AltPressed = dict.GetValueOrDefault("alt", false),
-                MetaPressed = dict.GetValueOrDefault("meta", false)
+                ShiftPressed = Flag(dict, "shift"),
+                CtrlPressed = Flag(dict, "ctrl"),
+                AltPressed = Flag(dict, "alt"),
+                MetaPressed = Flag(dict, "meta")
             };
             viewport.PushInput(ev);
             return true;
@@ -258,31 +267,38 @@ namespace WebViewSharp
             };
 
             if (maskInt == -1) return;
-            int current = (int)(object)_currentButtonMask;
+
+            // 注意：不能写成 (int)(object)enum —— 装箱后拆箱到 Int32 会抛
+            // InvalidCastException（探针实测），这是与 Variant.Obj 同族的坑。
+            int current = (int)_currentButtonMask;
 
             if (pressed)
                 current |= maskInt;
             else
                 current &= ~maskInt;
 
-            _currentButtonMask = (MouseButtonMask)(object)current;
+            _currentButtonMask = (MouseButtonMask)current;
         }
 
         // ═══════════════════════════════════════════════
-        //  Dictionary 扩展
+        //  Dictionary 取值
+        //
+        //  Godot 的 JSON 解析把**所有**数字都存成 float 变体
+        //  （实测 {"x":5} → VariantType.Float，Variant.Obj 装箱的是 System.Double），
+        //  所以绝不能写 (T)val.Obj 这种拆箱——(float)/(int) 都会抛
+        //  InvalidCastException，被上面的 catch 吞掉，输入转发会整体失效。
         // ═══════════════════════════════════════════════
 
-        private static T GetValueOrDefault<T>(this Dictionary dict, string key, T defaultValue)
-        {
-            if (dict.ContainsKey(key))
-            {
-                var val = dict[key];
-                if (val.VariantType != Variant.Type.Nil)
-                {
-                    return (T)val.Obj;
-                }
-            }
-            return defaultValue;
-        }
+        private static double Num(Dictionary dict, string key)
+            => dict.ContainsKey(key) ? dict[key].AsDouble() : 0.0;
+
+        private static int Int(Dictionary dict, string key)
+            => dict.ContainsKey(key) ? dict[key].AsInt32() : 0;
+
+        private static bool Flag(Dictionary dict, string key)
+            => dict.ContainsKey(key) && dict[key].AsBool();
+
+        private static string Str(Dictionary dict, string key)
+            => dict.ContainsKey(key) ? dict[key].AsString() : "";
     }
 }

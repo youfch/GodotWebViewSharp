@@ -39,6 +39,7 @@ namespace WebViewSharp
 
         // ── 焦点 ──
         void Focus();
+        void FocusParent();
 
         // ── 可见性 ──
         void SetVisible(bool visible);

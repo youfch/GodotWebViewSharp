@@ -1,6 +1,7 @@
 using Godot;
 using Microsoft.Web.WebView2.Core;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -29,6 +30,9 @@ namespace WebViewSharp
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetFocus(IntPtr hWnd);
 
         private const int GWL_STYLE = -16;
         private const int GWL_EXSTYLE = -20;
@@ -147,13 +151,16 @@ namespace WebViewSharp
                 }
 
 // 3. 创建 WebView2 环境
-            var envOptions = new CoreWebView2EnvironmentOptions
-            {
-                // 允许 file:// 加载 ES Module
-                AdditionalBrowserArguments = "--allow-file-access-from-files --disable-web-security"
-            };
+                //    注意：这里**不再**整体关闭 web 安全（原来的 --disable-web-security
+                //    --allow-file-access-from-files 已移除）。res:// 资源走虚拟主机映射
+                //    https://godot.local/，本身就是 WebView2 官方的本地文件服务方式，
+                //    ES Module / fetch 都不会被 CORS 拦截，无需牺牲安全性。
+                var envOptions = new CoreWebView2EnvironmentOptions
+                {
+                    AdditionalBrowserArguments = BuildBrowserArguments()
+                };
 
-            string userDataDir = GetUserDataDirectory();
+                string userDataDir = GetUserDataDirectory();
 
                 _environment = await CoreWebView2Environment.CreateAsync(
                     browserExecutableFolder: null,
@@ -161,8 +168,17 @@ namespace WebViewSharp
                     options: envOptions
                 );
 
-                // 4. 创建 WebView2 控制器
-                _controller = await _environment.CreateCoreWebView2ControllerAsync(_parentHwnd);
+                // 4. 创建 WebView2 控制器（无痕模式需要通过 controller options 开启）
+                if (_host?.Incognito == true)
+                {
+                    var controllerOptions = _environment.CreateCoreWebView2ControllerOptions();
+                    controllerOptions.IsInPrivateModeEnabled = true;
+                    _controller = await _environment.CreateCoreWebView2ControllerAsync(_parentHwnd, controllerOptions);
+                }
+                else
+                {
+                    _controller = await _environment.CreateCoreWebView2ControllerAsync(_parentHwnd);
+                }
 
                 if (_controller == null)
                 {
@@ -212,6 +228,7 @@ namespace WebViewSharp
                 _controller.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
                 _controller.CoreWebView2.SourceChanged += OnSourceChanged;
                 _controller.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+                _controller.CoreWebView2.PermissionRequested += OnPermissionRequested;
 
                 // 10. 设置虚拟主机映射：godot.local → Godot 项目根目录
                 // 这样 ES Module 通过 HTTPS 加载，不被 CORS 拦截
@@ -228,11 +245,34 @@ namespace WebViewSharp
                     GD.PrintErr($"[WebViewSharp] Virtual host mapping failed: {ex.Message}");
                 }
 
+                // user:// 也走虚拟主机（替代原来的 file://，这样无需关闭 web 安全）
+                try
+                {
+                    string userPath = ProjectSettings.GlobalizePath("user://");
+                    Directory.CreateDirectory(userPath);
+                    _controller.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        "godot-user.local", userPath,
+                        CoreWebView2HostResourceAccessKind.Allow);
+                    GD.Print($"[WebViewSharp] Virtual host mapping: godot-user.local -> {userPath}");
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"[WebViewSharp] user:// virtual host mapping failed: {ex.Message}");
+                }
+
                 // 11. 透明背景（对标 godot_wry 的 transparent 属性）
                 if (_host?.Transparent == true)
                     SetTransparent(true);
 
-                GD.Print("[WebViewSharp] WebView2 created");
+                // 12. 创建时获取焦点（对标 godot_wry 的 focused_when_created）
+                if (_host?.FocusedWhenCreated == true)
+                    Focus();
+
+                GD.Print($"[WebViewSharp] WebView2 created " +
+                         $"(incognito={_host?.Incognito == true}, autoplay={_host?.Autoplay == true}, " +
+                         $"clipboard={_host?.ClipboardEnabled == true}, focusedWhenCreated={_host?.FocusedWhenCreated == true}, " +
+                         $"userAgent={(string.IsNullOrEmpty(_host?.UserAgent) ? "(default)" : _host.UserAgent)}, " +
+                         $"browserArgs=[{BuildBrowserArguments()}])");
             }
             catch (Exception ex)
             {
@@ -257,9 +297,45 @@ namespace WebViewSharp
                 settings.AreDevToolsEnabled = _host.DevToolsEnabled;
                 settings.IsZoomControlEnabled = _host.ZoomHotkeysEnabled;
                 settings.IsScriptEnabled = true;
+
+                // 自定义 User-Agent（原来声明了属性但从未生效）
+                if (!string.IsNullOrEmpty(_host.UserAgent))
+                {
+                    settings.UserAgent = _host.UserAgent;
+                }
             }
 
             _controller.IsVisible = true;
+        }
+
+        /// <summary>
+        /// 组装 Chromium 命令行参数。只在需要时加，默认不加任何降低安全性的开关。
+        /// </summary>
+        private string BuildBrowserArguments()
+        {
+            var args = new List<string>();
+
+            // 自动播放媒体（对标 godot_wry 的 autoplay）
+            if (_host?.Autoplay == true)
+            {
+                args.Add("--autoplay-policy=no-user-gesture-required");
+            }
+
+            return string.Join(" ", args);
+        }
+
+        /// <summary>
+        /// 权限请求：剪贴板读取按 ClipboardEnabled 允许/拒绝，其余交给默认行为。
+        /// （WebView2 没有直接的"剪贴板开关"，只能在这一层拦）
+        /// </summary>
+        private void OnPermissionRequested(object sender, CoreWebView2PermissionRequestedEventArgs e)
+        {
+            if (e.PermissionKind == CoreWebView2PermissionKind.ClipboardRead)
+            {
+                e.State = _host?.ClipboardEnabled == true
+                    ? CoreWebView2PermissionState.Allow
+                    : CoreWebView2PermissionState.Deny;
+            }
         }
 
         // ═══════════════════════════════════════════════
@@ -346,6 +422,19 @@ namespace WebViewSharp
         public void Focus()
         {
             _controller?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+        }
+
+        /// <summary>
+        /// 把焦点从 WebView2 子窗口切回 Godot 父窗口。
+        /// 对标 godot_wry / WRY 的 focus_parent()：当用户点击 webview rect 外的 Godot 区域时，
+        /// 需要主动把焦点还给父窗口，否则键盘事件会停留在 webview。
+        /// </summary>
+        public void FocusParent()
+        {
+            if (_parentHwnd != IntPtr.Zero)
+            {
+                SetFocus(_parentHwnd);
+            }
         }
 
         public void SetVisible(bool visible)
@@ -482,6 +571,7 @@ namespace WebViewSharp
                     _controller.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
                     _controller.CoreWebView2.SourceChanged -= OnSourceChanged;
                     _controller.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
+                    _controller.CoreWebView2.PermissionRequested -= OnPermissionRequested;
                 }
                 _controller.Close();
                 _controller = null;

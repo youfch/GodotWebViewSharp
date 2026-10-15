@@ -22,13 +22,11 @@ namespace WebViewSharp
         private IWebViewBackend _webview;
 
         // ── 位置/大小同步缓存 ──
-        private Vector2 _previousGlobalPos;
-        private Vector2 _previousSize;
-        private Vector2I _previousWindowPos;
-        private float _previousContentScale = 1.0f;
+        private Rect2I? _previousRect;
 
         // ── 状态 ──
         private bool _isReady;
+        private bool _visibilityHooked;
 
         public WebViewControl()
         {
@@ -172,12 +170,38 @@ namespace WebViewSharp
                 return;
 
             _isReady = true;
+
+            // 隐藏/显示时同步原生窗口可见性，否则控件隐藏后 webview 仍然浮在最上层
+            // （对标 godot_wry 的 visibility_changed -> update_visibility）
+            HookVisibility();
+
             InitializeWebView();
         }
 
         public override void _ExitTree()
         {
+            // 注意：必须与订阅对称。编辑器模式下 _Ready 会提前 return（没订阅），
+            // 此时若无条件 -= 就会报 "Attempt to disconnect a nonexistent connection"。
+            UnhookVisibility();
             CleanupWebView();
+        }
+
+        private void HookVisibility()
+        {
+            if (_visibilityHooked)
+                return;
+
+            VisibilityChanged += OnVisibilityChanged;
+            _visibilityHooked = true;
+        }
+
+        private void UnhookVisibility()
+        {
+            if (!_visibilityHooked)
+                return;
+
+            VisibilityChanged -= OnVisibilityChanged;
+            _visibilityHooked = false;
         }
 
         public override void _Process(double delta)
@@ -200,6 +224,33 @@ namespace WebViewSharp
                     method?.Invoke(_webview, null);
                 }
                 catch { }
+            }
+        }
+
+        // ═══════════════════════════════════════════════
+        //  焦点管理（对标 godot_wry 的 input()）
+        // ═══════════════════════════════════════════════
+
+        /// <summary>
+        /// 当 webview 非全窗口大小、鼠标按下、且点击位置在 webview rect 外时，
+        /// 把焦点从 WebView2 子窗口切回 Godot 父窗口。
+        /// 否则键盘事件会停留在 webview，Godot 后续的键盘输入收不到。
+        /// 直接对标 godot_wry (rust/src/lib.rs) 的 fn input()。
+        /// </summary>
+        public override void _Input(InputEvent @event)
+        {
+            if (_webview == null || !_webview.IsCreated || FullWindowSize)
+                return;
+
+            if (@event is InputEventMouseButton mouseEvent && mouseEvent.Pressed)
+            {
+                var mousePos = GetGlobalMousePosition();
+                var rect = GetGlobalRect();
+
+                if (!rect.HasPoint(mousePos))
+                {
+                    _webview.FocusParent();
+                }
             }
         }
 
@@ -242,17 +293,17 @@ namespace WebViewSharp
                     return;
                 }
 
+                // 连接事件（必须在导航之前，否则首个页面的 load 事件会丢）
+                _webview.NavigationStarting += OnNavigationStarting;
+                _webview.NavigationCompleted += OnNavigationCompleted;
+                _webview.WebMessageReceived += OnWebMessageReceived;
+                _webview.SourceChanged += OnSourceChanged;
+
                 // 加载 URL 或 HTML
                 if (!string.IsNullOrEmpty(Url))
                     _webview.Navigate(ResolveUrl(Url));
                 else if (!string.IsNullOrEmpty(Html))
                     _webview.NavigateToString(Html);
-
-                // 连接事件
-                _webview.NavigationStarting += OnNavigationStarting;
-                _webview.NavigationCompleted += OnNavigationCompleted;
-                _webview.WebMessageReceived += OnWebMessageReceived;
-                _webview.SourceChanged += OnSourceChanged;
 
                 // 初始同步
                 SyncPosition();
@@ -283,49 +334,59 @@ namespace WebViewSharp
             if (_webview == null || !_webview.IsCreated)
                 return;
 
-            var globalPos = GlobalPosition;
-            var size = Size;
-            if (size.X <= 0 || size.Y <= 0 && !FullWindowSize)
+            var rect = ComputeNativeRect(this, FullWindowSize);
+
+            if (!FullWindowSize && (rect.Size.X <= 0 || rect.Size.Y <= 0))
                 return;
 
-            float contentScale = DisplayServer.ScreenGetScale();
-            var windowPos = FullWindowSize
-                ? Vector2I.Zero
-                : DisplayServer.WindowGetPosition();
-
-            // 仅在有变化时更新，避免不必要的开销
-            if (globalPos == _previousGlobalPos
-                && size == _previousSize
-                && windowPos == _previousWindowPos
-                && Math.Abs(contentScale - _previousContentScale) < 0.001f)
-            {
+            // 无变化就不动（子窗口拖动、窗口移动、缩放变化都会体现在 rect 里）
+            if (_previousRect.HasValue && _previousRect.Value == rect)
                 return;
-            }
 
-            _previousGlobalPos = globalPos;
-            _previousSize = size;
-            _previousWindowPos = windowPos;
-            _previousContentScale = contentScale;
+            _previousRect = rect;
+            _webview.SetBounds(rect.Position.X, rect.Position.Y, rect.Size.X, rect.Size.Y);
+        }
 
-            int physX, physY, physW, physH;
+        /// <summary>
+        /// 计算 webview 在原生宿主窗口（主窗口）客户区中的物理像素矩形。
+        ///
+        /// 实测（Godot 4.6.3 / Windows）得出的三条结论：
+        /// 1. <c>Control.GlobalPosition</c> 只到"最近的 Window 祖先"的视口空间。
+        ///    控件挂在嵌入式子窗口（Window 节点）里时，直接用它会丢掉子窗口偏移 ——
+        ///    这就是"浏览器没有出现在 Window 节点里"的根因。
+        /// 2. <c>GetScreenTransform().Origin</c> 会累加所有祖先子窗口偏移，且恰好**不含**
+        ///    操作系统窗口自身的屏幕位置 —— 正是需要的坐标空间（webview 是主窗口的子窗口）。
+        /// 3. 窗口像素 ÷ 视口尺寸 = 物理/逻辑比例，同时涵盖拉伸（content_scale）与 DPI 缩放，
+        ///    比 <c>DisplayServer.ScreenGetScale()</c> 更准确。
+        /// </summary>
+        internal static Rect2I ComputeNativeRect(Control control, bool fullWindowSize)
+        {
+            var window = control.GetWindow();
+            var viewport = control.GetViewport();
 
-            if (FullWindowSize)
+            float scaleX = 1.0f, scaleY = 1.0f;
+            if (window != null && viewport != null)
             {
-                var windowSize = DisplayServer.WindowGetSize();
-                physX = 0;
-                physY = 0;
-                physW = (int)(windowSize.X * contentScale);
-                physH = (int)(windowSize.Y * contentScale);
-            }
-            else
-            {
-                physX = (int)(globalPos.X * contentScale);
-                physY = (int)(globalPos.Y * contentScale);
-                physW = (int)(size.X * contentScale);
-                physH = (int)(size.Y * contentScale);
+                Vector2 vpSize = viewport.GetVisibleRect().Size;
+                Vector2I winSize = window.Size;
+                if (vpSize.X > 0.0f) scaleX = winSize.X / vpSize.X;
+                if (vpSize.Y > 0.0f) scaleY = winSize.Y / vpSize.Y;
             }
 
-            _webview.SetBounds(physX, physY, physW, physH);
+            if (fullWindowSize)
+            {
+                Vector2I winSize = window?.Size ?? DisplayServer.WindowGetSize();
+                return new Rect2I(0, 0, winSize.X, winSize.Y);
+            }
+
+            Vector2 origin = control.GetScreenTransform().Origin;
+            Vector2 size = control.Size;
+
+            return new Rect2I(
+                Mathf.RoundToInt(origin.X * scaleX),
+                Mathf.RoundToInt(origin.Y * scaleY),
+                Mathf.RoundToInt(size.X * scaleX),
+                Mathf.RoundToInt(size.Y * scaleY));
         }
 
         // ═══════════════════════════════════════════════
@@ -355,6 +416,22 @@ namespace WebViewSharp
                 return;
 
             EmitSignal(SignalName.IpcMessage, message);
+        }
+
+        private void OnVisibilityChanged()
+        {
+            if (_webview == null || !_webview.IsCreated)
+                return;
+
+            bool visible = IsVisibleInTree();
+            _webview.SetVisible(visible);
+
+            if (visible)
+            {
+                // 重新显示后强制同步一次位置（显示期间窗口/子窗口可能已经移动过）
+                _previousRect = null;
+                SyncPosition();
+            }
         }
 
         private void EmitPageLoadStarted(string url)
@@ -491,12 +568,13 @@ namespace WebViewSharp
                 return $"https://godot.local/{path}";
             }
 
-            // user:// 协议
+            // user:// → https://godot-user.local/ 虚拟主机映射
+            // （原来映射成 file:///，那样必须整体关掉 web 安全才能加载 ES Module；
+            //   走虚拟主机后就不需要 --disable-web-security 了）
             if (url.StartsWith("user://"))
             {
                 string path = url.Substring(7).Replace("\\", "/");
-                string globalPath = ProjectSettings.GlobalizePath($"user://{path}");
-                return $"file:///{globalPath.Replace("\\", "/")}";
+                return $"https://godot-user.local/{path}";
             }
 
             return url;
