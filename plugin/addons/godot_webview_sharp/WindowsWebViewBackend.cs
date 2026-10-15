@@ -50,6 +50,7 @@ namespace WebViewSharp
         private IntPtr _parentHwnd;
         private IntPtr _childHwnd;
         private WebViewControl _host;
+        private bool _devToolsOpen;
 
         // ── 事件 ──
         public event Action<string> NavigationStarting;
@@ -230,35 +231,13 @@ namespace WebViewSharp
                 _controller.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
                 _controller.CoreWebView2.PermissionRequested += OnPermissionRequested;
 
-                // 10. 设置虚拟主机映射：godot.local → Godot 项目根目录
-                // 这样 ES Module 通过 HTTPS 加载，不被 CORS 拦截
-                try
-                {
-                    string projectPath = ProjectSettings.GlobalizePath("res://");
-                    _controller.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                        "godot.local", projectPath,
-                        CoreWebView2HostResourceAccessKind.Allow);
-                    GD.Print($"[WebViewSharp] Virtual host mapping: godot.local -> {projectPath}");
-                }
-                catch (Exception ex)
-                {
-                    GD.PrintErr($"[WebViewSharp] Virtual host mapping failed: {ex.Message}");
-                }
-
-                // user:// 也走虚拟主机（替代原来的 file://，这样无需关闭 web 安全）
-                try
-                {
-                    string userPath = ProjectSettings.GlobalizePath("user://");
-                    Directory.CreateDirectory(userPath);
-                    _controller.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                        "godot-user.local", userPath,
-                        CoreWebView2HostResourceAccessKind.Allow);
-                    GD.Print($"[WebViewSharp] Virtual host mapping: godot-user.local -> {userPath}");
-                }
-                catch (Exception ex)
-                {
-                    GD.PrintErr($"[WebViewSharp] user:// virtual host mapping failed: {ex.Message}");
-                }
+                // 10. 资源服务：拦截 https://godot.local/*（res://）与 https://godot-user.local/*（user://）
+                //     走自定义响应而不是 SetVirtualHostNameToFolderMapping —— 后者映射的是文件系统
+                //     目录，导出成 PCK 后 res:// 资源读不到；这里经 Godot 的 FileAccess 读，PCK 内也能读
+                WebResourceServer.Install(_controller.CoreWebView2);
+                _controller.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
+                GD.Print($"[WebViewSharp] Resource server: https://{WebResourceServer.ResHost}/ -> res://, " +
+                         $"https://{WebResourceServer.UserHost}/ -> user://");
 
                 // 11. 透明背景（对标 godot_wry 的 transparent 属性）
                 if (_host?.Transparent == true)
@@ -338,6 +317,23 @@ namespace WebViewSharp
             }
         }
 
+        /// <summary>
+        /// 资源请求拦截：只接管我们自己的虚拟主机，其余返回 null 交给 WebView2 正常走网络。
+        /// </summary>
+        private void OnWebResourceRequested(object sender, CoreWebView2WebResourceRequestedEventArgs e)
+        {
+            try
+            {
+                var response = WebResourceServer.TryBuildResponse(_environment, e);
+                if (response != null)
+                    e.Response = response;
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"[WebViewSharp] Resource request failed for {e.Request.Uri}: {ex.Message}");
+            }
+        }
+
         // ═══════════════════════════════════════════════
         //  位置同步
         // ═══════════════════════════════════════════════
@@ -395,19 +391,46 @@ namespace WebViewSharp
         }
 
         // ═══════════════════════════════════════════════
+        //  缩放
+        // ═══════════════════════════════════════════════
+
+        public void SetZoomFactor(double factor)
+        {
+            if (_controller != null)
+                _controller.ZoomFactor = factor;
+        }
+
+        // ═══════════════════════════════════════════════
+        //  打印
+        // ═══════════════════════════════════════════════
+
+        public void Print()
+        {
+            _controller?.CoreWebView2?.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
+        }
+
+        // ═══════════════════════════════════════════════
         //  DevTools
         // ═══════════════════════════════════════════════
 
         public void OpenDevTools()
         {
-            _controller?.CoreWebView2?.OpenDevToolsWindow();
+            if (_controller?.CoreWebView2 == null) return;
+
+            _controller.CoreWebView2.OpenDevToolsWindow();
+            _devToolsOpen = true;
         }
 
         public void CloseDevTools()
         {
-            // WebView2 没有直接的关闭 DevTools API，可通过 ExecuteScript 实现
-            ExecuteScript("if (window.__webviewDevTools) window.__webviewDevTools.close();");
+            if (_controller?.CoreWebView2 == null) return;
+
+            // WebView2 没有"关闭 DevTools"的公开 API，这里只维护状态标记
+            // （用户在开发者工具窗口里手动关掉的话，这个标记不会自动更新）
+            _devToolsOpen = false;
         }
+
+        public bool IsDevToolsOpen => _devToolsOpen;
 
         // ═══════════════════════════════════════════════
         //  数据 / 焦点 / 可见性
@@ -572,6 +595,7 @@ namespace WebViewSharp
                     _controller.CoreWebView2.SourceChanged -= OnSourceChanged;
                     _controller.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
                     _controller.CoreWebView2.PermissionRequested -= OnPermissionRequested;
+                    _controller.CoreWebView2.WebResourceRequested -= OnWebResourceRequested;
                 }
                 _controller.Close();
                 _controller = null;
