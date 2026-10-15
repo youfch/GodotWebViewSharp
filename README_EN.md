@@ -57,7 +57,7 @@ Based on **Microsoft Edge WebView2** (built-in), supports:
 - EmbeddedWindow mode — high performance, video/WebGL support
 - JavaScript ↔ C# IPC (window.chrome.webview.postMessage)
 - Input event forwarding (mouse/keyboard → Godot); Godot controls behind the webview stay clickable (events re-injected via `Viewport.PushInput`)
-- Virtual host mapping (`res://` → `https://godot.local/`, `user://` → `https://godot-user.local/`), so web security is never disabled
+- Custom asset server (`res://` → `https://godot.local/`, `user://` → `https://godot-user.local/`): requests are intercepted and read through Godot's `FileAccess`, so it **keeps working after exporting into a PCK**; includes MIME types, `index.html` directory fallback, Range (206) and 404 — no need to disable web security
 - F12 DevTools
 - Transparent background (Experimental)
 
@@ -120,6 +120,15 @@ $WebView.connect("IpcMessage", _on_ipc)                          # IpcMessage / 
 ```
 
 Same in scene files: `Url = "..."`, `Transparent = true` (not `url` / `transparent`).
+
+Available methods: `LoadUrl` / `LoadHtml` / `Reload` / `GoBack` / `GoForward` / `EvaluateJavaScript` /
+`PostMessage` / `OpenDevTools` / `CloseDevTools` / `IsDevToolsOpen` / `Zoom` / `Print` /
+`FocusWebView` / `FocusParent` / `SetWebViewVisible` / `ClearAllBrowsingData`.
+
+> `SetWebViewVisible` is godot_wry's `set_visible()`: it only toggles the native webview. It is not named
+> `SetVisible` because `Control` already has `set_visible` (the setter of the `visible` property) —
+> shadowing it would silently change what `$WebView.set_visible(false)` means. The webview follows the
+> control's own `visible` changes automatically.
 
 ## Reference Projects
 

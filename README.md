@@ -57,7 +57,7 @@ GodotWebViewSharp/
 - 嵌入窗口模式 (EmbeddedWindow) — 高性能，支持视频/WebGL
 - JavaScript ↔ C# IPC (window.chrome.webview.postMessage)
 - 输入事件转发 (鼠标/键盘 → Godot)；webview 盖住的 Godot 控件照样能点（事件回注 `Viewport.PushInput`）
-- 虚拟主机映射 (`res://` → `https://godot.local/`，`user://` → `https://godot-user.local/`)，因此无需关闭 web 安全
+- 网页资源自建服务（`res://` → `https://godot.local/`，`user://` → `https://godot-user.local/`）：拦截请求后用 Godot 的 `FileAccess` 读文件，因此**导出成 PCK 后依然可用**；自带 MIME、目录回退 `index.html`、Range(206)、404，也不需关闭 web 安全
 - F12 DevTools
 - 透明背景 (Experimental)
 
@@ -119,6 +119,14 @@ $WebView.connect("IpcMessage", _on_ipc)                          # IpcMessage / 
 ```
 
 场景文件里同理：`Url = "..."`、`Transparent = true`（不是 `url` / `transparent`）。
+
+可用方法：`LoadUrl` / `LoadHtml` / `Reload` / `GoBack` / `GoForward` / `EvaluateJavaScript` /
+`PostMessage` / `OpenDevTools` / `CloseDevTools` / `IsDevToolsOpen` / `Zoom` / `Print` /
+`FocusWebView` / `FocusParent` / `SetWebViewVisible` / `ClearAllBrowsingData`。
+
+> `SetWebViewVisible` 对应 godot_wry 的 `set_visible()`：只切原生 webview 的可见性。之所以不叫
+> `SetVisible`，是因为 `Control` 基类本来就有 `set_visible`（`visible` 属性的 setter），同名会把基类
+> 方法遮蔽掉、让 `$WebView.set_visible(false)` 的含义变得反直觉。控件自身 `visible` 变化时的同步是自动的。
 
 ## 参考项目
 
