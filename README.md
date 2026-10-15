@@ -56,8 +56,8 @@ GodotWebViewSharp/
 基于 **Microsoft Edge WebView2** (系统内置)，支持：
 - 嵌入窗口模式 (EmbeddedWindow) — 高性能，支持视频/WebGL
 - JavaScript ↔ C# IPC (window.chrome.webview.postMessage)
-- 输入事件转发 (鼠标/键盘 → Godot)
-- 虚拟主机映射 (`godot.local` → Godot 项目 `res://`)
+- 输入事件转发 (鼠标/键盘 → Godot)；webview 盖住的 Godot 控件照样能点（事件回注 `Viewport.PushInput`）
+- 虚拟主机映射 (`res://` → `https://godot.local/`，`user://` → `https://godot-user.local/`)，因此无需关闭 web 安全
 - F12 DevTools
 - 透明背景 (Experimental)
 
@@ -105,6 +105,20 @@ dotnet build
 ```
 
 然后在 Godot 编辑器中打开 `plugin/project.godot` 即可使用。
+
+### 从 GDScript 调用
+
+C# 脚本的方法、属性和信号是**按 C# 原名**暴露给 Godot 的，不会自动转成 snake_case，
+所以 GDScript 里必须写成和 C# 一致的名字（`has_method()`/`connect()` 也是）：
+
+```gdscript
+$WebView.LoadUrl("res://Demo/character_creator/ui/index.html")  # 不是 load_url()
+$WebView.OpenDevTools()
+$WebView.PostMessage("hello")
+$WebView.connect("IpcMessage", _on_ipc)                          # IpcMessage / PageLoadStarted / PageLoadFinished
+```
+
+场景文件里同理：`Url = "..."`、`Transparent = true`（不是 `url` / `transparent`）。
 
 ## 参考项目
 

@@ -10,5 +10,6 @@ func _ready():
 		return
 
 func _on_button_pressed():
-	if _webview != null and _webview.has_method("load_url"):
-		_webview.load_url("res://Demo/character_creator/ui/index.html")
+	# C# 脚本的方法按原名暴露给 GDScript（has_method 也要用原名，否则静默不执行）
+	if _webview != null and _webview.has_method("LoadUrl"):
+		_webview.LoadUrl("res://Demo/character_creator/ui/index.html")

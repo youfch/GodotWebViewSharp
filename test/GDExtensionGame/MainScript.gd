@@ -13,6 +13,8 @@ func _ready():
 	# 可以通过以下方式使用：
 	# var wv = WebViewControl.new()
 	# add_child(wv)
+	#
+	# 注意：方法名是 C# 原名（PascalCase），不会转成 snake_case
 	
 	go_btn.pressed.connect(_on_go)
 	back_btn.pressed.connect(_on_back)
@@ -28,17 +30,17 @@ func _on_go():
 		return
 	if not url.begins_with("http://") and not url.begins_with("https://"):
 		url = "https://" + url
-	# webview.load_url(url)  # 待 GDExtension 加载后启用
+	# webview.LoadUrl(url)  # 待 GDExtension 加载后启用
 	status_label.text = "Loading: " + url
 
 func _on_back():
-	# webview.go_back()
+	# webview.GoBack()
 	pass
 
 func _on_forward():
-	# webview.go_forward()
+	# webview.GoForward()
 	pass
 
 func _on_reload():
-	# webview.reload()
+	# webview.Reload()
 	pass

@@ -61,13 +61,17 @@ func _input(event):
 func _on_web_view_ipc_message(message):
 	print("IPC received: ", message.left(80))
 	var data = JSON.parse_string(message)
-	
+	if typeof(data) != TYPE_DICTIONARY or not data.has("type"):
+		print("IPC (非 JSON / 无 type，忽略): ", message)
+		return
+
 	match data.type:
 		"open_url":
 			OS.shell_open(data.url)
 			
 		"open_devtools":
-			$WebView.open_devtools()
+			# C# 脚本的方法按原名暴露给 GDScript，不会转 snake_case
+			$WebView.OpenDevTools()
 		
 		"change_tab":
 			var tween = get_tree().create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUINT)

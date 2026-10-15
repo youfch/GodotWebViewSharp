@@ -56,8 +56,8 @@ GodotWebViewSharp/
 Based on **Microsoft Edge WebView2** (built-in), supports:
 - EmbeddedWindow mode — high performance, video/WebGL support
 - JavaScript ↔ C# IPC (window.chrome.webview.postMessage)
-- Input event forwarding (mouse/keyboard → Godot)
-- Virtual host mapping (`godot.local` → Godot project `res://`)
+- Input event forwarding (mouse/keyboard → Godot); Godot controls behind the webview stay clickable (events re-injected via `Viewport.PushInput`)
+- Virtual host mapping (`res://` → `https://godot.local/`, `user://` → `https://godot-user.local/`), so web security is never disabled
 - F12 DevTools
 - Transparent background (Experimental)
 
@@ -105,6 +105,21 @@ dotnet build
 ```
 
 Then open `plugin/project.godot` in the Godot editor.
+
+### Calling from GDScript
+
+C# script methods, properties and signals are exposed to Godot with their **original C# names** —
+they are not converted to snake_case, so GDScript (`has_method()`/`connect()` included) must use
+the same spelling as the C# side:
+
+```gdscript
+$WebView.LoadUrl("res://Demo/character_creator/ui/index.html")  # not load_url()
+$WebView.OpenDevTools()
+$WebView.PostMessage("hello")
+$WebView.connect("IpcMessage", _on_ipc)                          # IpcMessage / PageLoadStarted / PageLoadFinished
+```
+
+Same in scene files: `Url = "..."`, `Transparent = true` (not `url` / `transparent`).
 
 ## Reference Projects
 
