@@ -126,27 +126,33 @@ namespace WebViewSharp
             float deltaY = (float)Num(dict, "deltaY");
             var position = new Vector2(vpX, vpY);
 
+            // 修饰键要带给滚轮事件（godot_wry 也这么做；缺了会让 Ctrl+滚轮之类的操作失效）
+            var modifiers = (Flag(dict, "shift"), Flag(dict, "ctrl"), Flag(dict, "alt"), Flag(dict, "meta"));
+
             if (deltaY != 0.0f)
             {
                 var button = deltaY < 0.0f ? MouseButton.WheelUp : MouseButton.WheelDown;
                 float factor = Math.Max(Math.Abs(deltaY) / 100.0f, 1.0f);
-                SendWheelEvent(button, position, factor, viewport);
+                SendWheelEvent(button, position, factor, modifiers, viewport);
             }
 
             if (deltaX != 0.0f)
             {
                 var button = deltaX < 0.0f ? MouseButton.WheelLeft : MouseButton.WheelRight;
                 float factor = Math.Max(Math.Abs(deltaX) / 100.0f, 1.0f);
-                SendWheelEvent(button, position, factor, viewport);
+                SendWheelEvent(button, position, factor, modifiers, viewport);
             }
 
             return true;
         }
 
-        private static void SendWheelEvent(MouseButton button, Vector2 position, float factor, Viewport viewport)
+        private static void SendWheelEvent(
+            MouseButton button, Vector2 position, float factor,
+            (bool shift, bool ctrl, bool alt, bool meta) modifiers, Viewport viewport)
         {
-            foreach (bool pressed in new[] { true, false })
+            for (int i = 0; i < 2; i++)
             {
+                bool pressed = i == 0;
                 var ev = new InputEventMouseButton
                 {
                     ButtonIndex = button,
@@ -154,7 +160,11 @@ namespace WebViewSharp
                     GlobalPosition = position,
                     Pressed = pressed,
                     Factor = factor,
-                    ButtonMask = _currentButtonMask
+                    ButtonMask = _currentButtonMask,
+                    ShiftPressed = modifiers.shift,
+                    CtrlPressed = modifiers.ctrl,
+                    AltPressed = modifiers.alt,
+                    MetaPressed = modifiers.meta
                 };
                 viewport.PushInput(ev);
             }
@@ -163,7 +173,9 @@ namespace WebViewSharp
         private static bool HandleKeyboard(string type, Dictionary dict, Viewport viewport)
         {
             string keyStr = Str(dict, "key");
-            var godotKey = MapGodotKey(keyStr);
+            string code = Str(dict, "code");
+
+            var godotKey = MapGodotKey(keyStr, code);
 
             var ev = new InputEventKey
             {
@@ -180,48 +192,49 @@ namespace WebViewSharp
 
         // ═══════════════════════════════════════════════
         //  按键映射（对标 godot_wry 的 GODOT_KEYS HashMap）
+        //
+        //  以 e.key 为主（可打印字符传的就是字符本身），小键盘额外用 e.code：
+        //  按 DOM 规范，小键盘数字的 e.key 就是 "0"，和主键盘区无法区分，
+        //  只有 e.code 是 "Numpad0"，所以 code 里带 numpad 时优先按 code 映射。
         // ═══════════════════════════════════════════════
 
-        private static Key MapGodotKey(string key)
+        private static Key MapGodotKey(string key, string code)
+        {
+            string lowerCode = code.ToLowerInvariant();
+            if (lowerCode.StartsWith("numpad", StringComparison.Ordinal) &&
+                NumpadByCode.TryGetValue(lowerCode, out Key numpadKey))
+            {
+                return numpadKey;
+            }
+
+            return MapByKey(key);
+        }
+
+        private static Key MapByKey(string key)
         {
             return key.ToLowerInvariant() switch
             {
-                "a" or "A" => Key.A,
-                "b" or "B" => Key.B,
-                "c" or "C" => Key.C,
-                "d" or "D" => Key.D,
-                "e" or "E" => Key.E,
-                "f" or "F" => Key.F,
-                "g" or "G" => Key.G,
-                "h" or "H" => Key.H,
-                "i" or "I" => Key.I,
-                "j" or "J" => Key.J,
-                "k" or "K" => Key.K,
-                "l" or "L" => Key.L,
-                "m" or "M" => Key.M,
-                "n" or "N" => Key.N,
-                "o" or "O" => Key.O,
-                "p" or "P" => Key.P,
-                "q" or "Q" => Key.Q,
-                "r" or "R" => Key.R,
-                "s" or "S" => Key.S,
-                "t" or "T" => Key.T,
-                "u" or "U" => Key.U,
-                "v" or "V" => Key.V,
-                "w" or "W" => Key.W,
-                "x" or "X" => Key.X,
-                "y" or "Y" => Key.Y,
-                "z" or "Z" => Key.Z,
+                // ── 字母 / 数字 ──
+                "a" => Key.A, "b" => Key.B, "c" => Key.C, "d" => Key.D, "e" => Key.E,
+                "f" => Key.F, "g" => Key.G, "h" => Key.H, "i" => Key.I, "j" => Key.J,
+                "k" => Key.K, "l" => Key.L, "m" => Key.M, "n" => Key.N, "o" => Key.O,
+                "p" => Key.P, "q" => Key.Q, "r" => Key.R, "s" => Key.S, "t" => Key.T,
+                "u" => Key.U, "v" => Key.V, "w" => Key.W, "x" => Key.X, "y" => Key.Y,
+                "z" => Key.Z,
 
                 "0" => Key.Key0, "1" => Key.Key1, "2" => Key.Key2,
                 "3" => Key.Key3, "4" => Key.Key4, "5" => Key.Key5,
                 "6" => Key.Key6, "7" => Key.Key7, "8" => Key.Key8, "9" => Key.Key9,
 
-                "f1" => Key.F1, "f2" => Key.F2, "f3" => Key.F3,
-                "f4" => Key.F4, "f5" => Key.F5, "f6" => Key.F6,
-                "f7" => Key.F7, "f8" => Key.F8, "f9" => Key.F9,
-                "f10" => Key.F10, "f11" => Key.F11, "f12" => Key.F12,
+                // ── 功能键 ──
+                "f1" => Key.F1, "f2" => Key.F2, "f3" => Key.F3, "f4" => Key.F4,
+                "f5" => Key.F5, "f6" => Key.F6, "f7" => Key.F7, "f8" => Key.F8,
+                "f9" => Key.F9, "f10" => Key.F10, "f11" => Key.F11, "f12" => Key.F12,
+                "f13" => Key.F13, "f14" => Key.F14, "f15" => Key.F15, "f16" => Key.F16,
+                "f17" => Key.F17, "f18" => Key.F18, "f19" => Key.F19, "f20" => Key.F20,
+                "f21" => Key.F21, "f22" => Key.F22, "f23" => Key.F23, "f24" => Key.F24,
 
+                // ── 方向 / 编辑 ──
                 "arrowup" => Key.Up, "arrowdown" => Key.Down,
                 "arrowleft" => Key.Left, "arrowright" => Key.Right,
 
@@ -235,13 +248,67 @@ namespace WebViewSharp
                 "delete" => Key.Delete, "end" => Key.End,
                 "pagedown" => Key.Pagedown,
 
+                // ── 修饰键 ──
                 "shift" => Key.Shift, "control" => Key.Ctrl,
-                "alt" => Key.Alt, "meta" => Key.Meta,
-                "contextmenu" => Key.Menu,
+                "alt" => Key.Alt, "altgraph" => Key.Alt,
+                "meta" => Key.Meta, "contextmenu" => Key.Menu,
+
+                // ── 符号（e.key 直接给字符） ──
+                "`" => Key.Quoteleft, "~" => Key.Asciitilde,
+                "!" => Key.Exclam, "@" => Key.At, "#" => Key.Numbersign,
+                "$" => Key.Dollar, "%" => Key.Percent, "^" => Key.Asciicircum,
+                "&" => Key.Ampersand, "*" => Key.Asterisk,
+                "(" => Key.Parenleft, ")" => Key.Parenright,
+                "-" => Key.Minus, "_" => Key.Underscore,
+                "=" => Key.Equal, "+" => Key.Plus,
+                "[" => Key.Bracketleft, "{" => Key.Braceleft,
+                "]" => Key.Bracketright, "}" => Key.Braceright,
+                "\\" => Key.Backslash, "|" => Key.Bar,
+                ";" => Key.Semicolon, ":" => Key.Colon,
+                "'" => Key.Apostrophe, "\"" => Key.Quotedbl,
+                "," => Key.Comma, "<" => Key.Less,
+                "." => Key.Period, ">" => Key.Greater,
+                "/" => Key.Slash, "?" => Key.Question,
+
+                // ── 媒体键 ──
+                "mediaplaypause" or "mediaplay" => Key.Mediaplay,
+                "mediastop" => Key.Mediastop,
+                "mediatracknext" => Key.Medianext,
+                "mediatrackprevious" => Key.Mediaprevious,
+                "mediarecord" => Key.Mediarecord,
+                "volumedown" => Key.Volumedown,
+                "volumeup" => Key.Volumeup,
+                "volumemute" => Key.Volumemute,
+
+                // ── 浏览器键 ──
+                "browserback" => Key.Back,
+                "browserforward" => Key.Forward,
+                "browserrefresh" => Key.Refresh,
+                "browserstop" => Key.Stop,
+                "browsersearch" => Key.Search,
+                "browserhome" => Key.Homepage,
+                "launchmail" => Key.Launchmail,
+                "launchmediaplayer" => Key.Launchmedia,
 
                 _ => Key.None
             };
         }
+
+        // 小键盘按 e.code 映射（e.key 区分不出来）
+        private static readonly System.Collections.Generic.Dictionary<string, Key> NumpadByCode =
+            new(StringComparer.Ordinal)
+            {
+                ["numpad0"] = Key.Kp0, ["numpad1"] = Key.Kp1, ["numpad2"] = Key.Kp2,
+                ["numpad3"] = Key.Kp3, ["numpad4"] = Key.Kp4, ["numpad5"] = Key.Kp5,
+                ["numpad6"] = Key.Kp6, ["numpad7"] = Key.Kp7, ["numpad8"] = Key.Kp8,
+                ["numpad9"] = Key.Kp9,
+                ["numpadenter"] = Key.KpEnter,
+                ["numpadadd"] = Key.KpAdd,
+                ["numpadsubtract"] = Key.KpSubtract,
+                ["numpadmultiply"] = Key.KpMultiply,
+                ["numpaddivide"] = Key.KpDivide,
+                ["numpaddecimal"] = Key.KpPeriod,
+            };
 
         private static MouseButton MapMouseButton(int button)
         {
